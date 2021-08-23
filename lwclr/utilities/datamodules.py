@@ -8,14 +8,15 @@ from pytorch_lightning import LightningDataModule
 from timm.data import create_transform
 
 def return_prepared_dm(args):
+
+    assert args.dataset_path, "Dataset path must not be empty."
    # setup data
     if args.dataset_name == 'cifar10':
-        dm = CIFAR10DM(batch_size=args.batch_size, image_size=args.image_size)
+        dm = CIFAR10DM(args)
     elif args.dataset_name == 'cifar100':
-        dm = Cifar100DM(batch_size=args.batch_size, image_size=args.image_size)
+        dm = CIFAR100DM(args)
     elif args.dataset_name == 'imagenet':
-        dm = ImageNetDM(data_dir=args.dataset_path, 
-        batch_size=args.batch_size, image_size=args.image_size)
+        dm = ImageNetDM(args)
     
     dm.prepare_data()
     dm.setup('fit')
@@ -57,47 +58,46 @@ def build_deit_transform(is_train, args):
     return transforms.Compose(t)
 
 
-def get_transform(split, image_size):
+def get_transform(split, args):
 
-	if split == 'train':
+    if split == 'train':
         if args.deit_recipe:
             transform = build_deit_transform(is_train=True, args=args)
         else:
-    		transform = transforms.Compose([
-				transforms.Resize((image_size+32, image_size+32)),
-				transforms.RandomCrop((image_size, image_size)),
-				transforms.RandomHorizontalFlip(),
-				transforms.ColorJitter(brightness=0.1, 
-				contrast=0.1, saturation=0.1, hue=0.1),
-				transforms.ToTensor(),
-				transforms.Normalize(mean=[0.485, 0.456, 0.406],
-									std=[0.229, 0.224, 0.225])
-				])
-	else:
+            transform = transforms.Compose([
+                transforms.Resize((args.image_size+32, args.image_size+32)),
+                transforms.RandomCrop((args.image_size, args.image_size)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ColorJitter(brightness=0.1, 
+                    contrast=0.1, saturation=0.1, hue=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
+                ])
+    else:
         if args.deit_recipe:
             transform = build_deit_transform(is_train=False, args=args)
-		else:
+        else:
             transform = transforms.Compose([
-				transforms.Resize((image_size, image_size)), 
-				transforms.ToTensor(),
-				transforms.Normalize(mean=[0.485, 0.456, 0.406],
-								std=[0.229, 0.224, 0.225])
-				])
-	
+                transforms.Resize((args.image_size, args.image_size)), 
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
+                ])
+
     return transform
 
 
 class CIFAR10DM(LightningDataModule):
 
-    def __init__(self, data_dir: str = './data/', 
-        batch_size: int = 256, image_size: int = 224, num_workers: int = 4):
+    def __init__(self, args):
         super().__init__()
-        self.data_dir = data_dir
-        self.batch_size = batch_size
-        self.image_size = image_size
-        self.num_workers = num_workers
-        self.transform_train = get_transform(split='train', image_size=self.image_size)
-        self.transform_eval = get_transform(split='val', image_size=self.image_size)
+        self.data_dir = args.dataset_path
+        self.batch_size = args.batch_size
+        self.image_size = args.image_size
+        self.num_workers = args.no_cpu_workers
+        self.transform_train = get_transform(split='train', args=args)
+        self.transform_eval = get_transform(split='val', args=args)
 
     def prepare_data(self):
         '''called only once and on 1 GPU'''
@@ -115,11 +115,11 @@ class CIFAR10DM(LightningDataModule):
             no_val = len(dataset_train) - no_train
 
             self.dataset_train, self.dataset_val = random_split(dataset_train, [no_train, no_val])
-            self.num_classes = len(self.dataset_train.classes)
+            self.num_classes = len(dataset_train.classes)
             
         if stage == 'test' or stage is None:
             self.dataset_test = CIFAR10(self.data_dir, train=False, transform=self.transform_eval)
-            self.num_classes = len(self.cifar_test.classes)
+            self.num_classes = len(self.dataset_test.classes)
 
     def train_dataloader(self):
         '''returns training dataloader'''
@@ -134,10 +134,16 @@ class CIFAR10DM(LightningDataModule):
         return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)
     
 
-class CIFAR100DM(CIFAR10DataModule):
+class CIFAR100DM(LightningDataModule):
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, args):
+        super().__init__()
+        self.data_dir = args.dataset_path
+        self.batch_size = args.batch_size
+        self.image_size = args.image_size
+        self.num_workers = args.no_cpu_workers
+        self.transform_train = get_transform(split='train', args=args)
+        self.transform_eval = get_transform(split='val', args=args)
 
     def prepare_data(self):
         '''called only once and on 1 GPU'''
@@ -155,24 +161,35 @@ class CIFAR100DM(CIFAR10DataModule):
             no_val = len(dataset_train) - no_train
 
             self.dataset_train, self.dataset_val = random_split(dataset_train, [no_train, no_val])
-            self.num_classes = len(self.dataset_train.classes)
+            self.num_classes = len(dataset_train.classes)
             
         if stage == 'test' or stage is None:
             self.dataset_test = CIFAR100(self.data_dir, train=False, transform=self.transform_eval)
-            self.num_classes = len(self.cifar_test.classes)
+            self.num_classes = len(self.dataset_test.classes)
 
+    def train_dataloader(self):
+        '''returns training dataloader'''
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers)
+        
+    def val_dataloader(self):
+        '''returns validation dataloader'''
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        
+    def test_dataloader(self):
+        '''returns test dataloader'''
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)
+    
             
 class ImageNetDM(LightningDataModule):
 
-    def __init__(self, data_dir: str, 
-        batch_size: int = 256, image_size: int = 224, num_workers: int = 4):
+    def __init__(self, args):
         super().__init__()
-        self.data_dir = os.path.abspath(data_dir)
-        self.batch_size = batch_size
-        self.image_size = image_size
-        self.num_workers = num_workers
-        self.transform_train = get_transform(split='train', image_size=self.image_size)
-        self.transform_eval = get_transform(split='val', image_size=self.image_size)
+        self.data_dir = os.path.abspath(args.dataset_path)
+        self.batch_size = args.batch_size
+        self.image_size = args.image_size
+        self.num_workers = args.no_cpu_workers
+        self.transform_train = get_transform(split='train', args=args)
+        self.transform_eval = get_transform(split='val', args=args)
         
     def setup(self, stage=None):
         '''called on each GPU separately - stage defines if we are at fit or test step'''

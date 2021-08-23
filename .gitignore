@@ -17,6 +17,7 @@
 !requirements_conda.txt
 
 # directories
+**/data/
 **/flagged/
 **/wandb/
 **/test_images/*

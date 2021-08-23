@@ -4,12 +4,12 @@ import torch.nn as nn
 import einops
 from einops.layers.torch import Rearrange
 
-from vit_pretrained_pytorch import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
+from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 
 def load_model(args):
     # initiates model and loss     
     model = VisionTransformer(args)
-
+    
     if args.checkpoint_path:
         if args.load_partial_mode:
             model.model.load_partial(weights_path=args.checkpoint_path, 
@@ -19,12 +19,12 @@ def load_model(args):
             state_dict = torch.load(args.checkpoint_path, map_location=torch.device('cpu'))
             expected_missing_keys = []
 
-            load_patch_embedding = (self.configuration.num_channels == self.configuration.pretrained_num_channels)
+            load_patch_embedding = (self.configuration.num_channels==self.configuration.pretrained_num_channels)
             if ('patch_embedding.weight' in state_dict and not load_patch_embedding):
                 expected_missing_keys += ['model.patch_embedding.weight', 'model.patch_embedding.bias']
             
-            #if ('pre_logits.weight' in state_dict and load_repr_layer==False):
-            #    expected_missing_keys += ['model.pre_logits.weight', 'model.pre_logits.bias']
+            if ('pre_logits.weight' in state_dict and self.configuration.load_repr_layer==False):
+                expected_missing_keys += ['model.pre_logits.weight', 'model.pre_logits.bias']
                     
             if args.transfer_learning:
                 if ('model.fc.weight' in state_dict):
@@ -52,11 +52,10 @@ class VisionTransformer(nn.Module):
         self.configuration.num_classes = args.num_classes
         self.configuration.image_size = args.image_size
         
-        base_model = ViT(self.configuration, name=args.model_name, 
-            pretrained=args.pretrained, load_fc_layer=False, ret_interm_repr=True)
-        self.model = base_model
-
+        self.model = ViT(self.configuration, name=args.model_name, 
+            pretrained=args.pretrained_checkpoint, load_fc_layer=False, ret_interm_repr=True)
+    
     def forward(self, images, mask=None):
-        
-        features, interm_features = self.model.extract_features(images, mask)
+        _, interm_features = self.model(images, mask)
         return interm_features
+        

@@ -1,1 +1,1 @@
-from lwclr.models.lit_lwclr.py import *
+from .lit_lwclr import LayerWiseCLR
