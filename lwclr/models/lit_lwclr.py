@@ -56,7 +56,7 @@ class LayerWiseCLR(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # forward and backward pass and log
         x, _ = batch
-        labels = torch.tensor([i for i in range(self.args.batch_size)], device=self.device)
+        labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
         new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
         
         interm_features= self.backbone(x)
@@ -72,7 +72,7 @@ class LayerWiseCLR(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, _ = batch
-        labels = torch.tensor([i for i in range(self.args.batch_size)], device=self.device)
+        labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
         new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
         
         interm_features= self.backbone(x)
@@ -83,7 +83,7 @@ class LayerWiseCLR(pl.LightningModule):
         
     def test_step(self, batch, batch_idx):
         x, _ = batch
-        labels = torch.tensor([i for i in range(self.args.batch_size)], device=self.device)
+        labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
         new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
         
         interm_features= self.backbone(x)
