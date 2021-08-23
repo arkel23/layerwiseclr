@@ -14,24 +14,19 @@ class LWCLR(nn.Module):
     def __init__(self, args, configuration):
         super().__init__()
         
-        if self.configuration.load_repr_layer:
+        if configuration.load_repr_layer:
             self.repr_layer = nn.Sequential(
                 nn.Linear(configuration.hidden_size, configuration.representation_size),
-                nn.ReLU)
+                nn.ReLU
             )
-            pre_logits_size = config.representation_size
+            pre_logits_size = configuration.representation_size
         else:
-            pre_logits_size = self.config.hidden_size
+            pre_logits_size = configuration.hidden_size
         
         self.class_head = nn.Sequential(
             nn.LayerNorm(pre_logits_size, eps=configuration.layer_norm_eps),
             nn.Linear(configuration.representation_size, args.batch_size)
         )
-
-        self.criterion = nn.CrossEntropyLoss()
-        self.labels = torch.tensor([i for i in range(args.batch_size)])
-        self.new_labels = [labels for _ in range(configuration.num_hidden_layers)]
-        
     
     def forward(self, interm_features):
         class_batch = torch.cat((interm_features), dim=0)[:, 0, :]
@@ -39,8 +34,7 @@ class LWCLR(nn.Module):
         if hasattr(self, 'repr_layer'):
             class_batch = self.repr_layer(class_batch)
         
-        logits = self.class_head(class_batch)
-        return self.criterion(logits, self.new_labels)
+        return self.class_head(class_batch)
 
         
 class LayerWiseCLR(pl.LightningModule):
@@ -49,7 +43,9 @@ class LayerWiseCLR(pl.LightningModule):
         self.args = args
         
         self.backbone = load_model(args)
-        self.LWCLR = LWCLR(args, configuration)
+        self.LWCLR = LWCLR(args, self.backbone.configuration)
+
+        self.criterion = nn.CrossEntropyLoss()
         
     def forward(self, x):
         # use forward for inference/predictions
@@ -60,10 +56,13 @@ class LayerWiseCLR(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # forward and backward pass and log
         x, _ = batch
+        labels = torch.tensor([i for i in range(self.args.batch_size)], device=self.device)
+        new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
         
         interm_features= self.backbone(x)
-        loss = self.LWCLR(interm_features)
+        logits = self.LWCLR(interm_features)
         
+        loss = self.criterion(logits, new_labels)
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         
         curr_lr = self.optimizers().param_groups[0]['lr']
@@ -73,18 +72,24 @@ class LayerWiseCLR(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, _ = batch
+        labels = torch.tensor([i for i in range(self.args.batch_size)], device=self.device)
+        new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
         
         interm_features= self.backbone(x)
-        loss = self.LWCLR(interm_features)
+        logits = self.LWCLR(interm_features)
         
+        loss = self.criterion(logits, new_labels)
         self.log('val_loss', loss, on_epoch=True, on_step=False)
         
     def test_step(self, batch, batch_idx):
         x, _ = batch
+        labels = torch.tensor([i for i in range(self.args.batch_size)], device=self.device)
+        new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
         
         interm_features= self.backbone(x)
-        loss = self.LWCLR(interm_features)
+        logits = self.LWCLR(interm_features)
         
+        loss = self.criterion(logits, new_labels)
         self.log('test_loss', loss, on_epoch=True, on_step=False)
 
     def configure_optimizers(self):
