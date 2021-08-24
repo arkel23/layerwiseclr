@@ -53,7 +53,8 @@ class VisionTransformer(nn.Module):
         self.configuration.image_size = args.image_size
         
         self.model = ViT(self.configuration, name=args.model_name, 
-            pretrained=args.pretrained_checkpoint, load_fc_layer=False, ret_interm_repr=True)
+            pretrained=args.pretrained_checkpoint, load_fc_layer=False, ret_interm_repr=True, 
+            conv_patching=args.conv_patching)
     
     def forward(self, images, mask=None):
         _, interm_features = self.model(images, mask)

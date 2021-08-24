@@ -129,6 +129,9 @@ class LayerWiseCLR(pl.LightningModule):
                             'posembeddings', 'clstoken', 'patchandposembeddings', 
                             'patchandclstoken', 'posembeddingsandclstoken', None], default=None,
                             help='Load pre-processing components to speed up training')
+
+        parser.add_argument('--conv_patching', action='store_true', 
+                        help='If use this flag uses a small convolutional stem instead of single large-stride convolution for patch projection.')
         
         return parser
 
