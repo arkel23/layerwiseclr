@@ -1,6 +1,7 @@
 import os
 
 from torch.utils.data import DataLoader, random_split
+import torchvision
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 
@@ -10,7 +11,7 @@ from timm.data import create_transform
 def return_prepared_dm(args):
 
     assert args.dataset_path, "Dataset path must not be empty."
-   # setup data
+    # setup data
     if args.dataset_name == 'cifar10':
         dm = CIFAR10DM(args)
     elif args.dataset_name == 'cifar100':
@@ -25,9 +26,32 @@ def return_prepared_dm(args):
     return dm
 
 
-def build_deit_transform(is_train, args):
+def standard_transform(split, args):
+    if split == 'train':
+        transform = transforms.Compose([
+            transforms.Resize((args.image_size+32, args.image_size+32)),
+            transforms.RandomCrop((args.image_size, args.image_size)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.1, 
+                contrast=0.1, saturation=0.1, hue=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.Resize((args.image_size, args.image_size)), 
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
+
+    return transform
+
+
+def deit_transform(split, args):
     resize_im = args.image_size > 32
-    if is_train:
+    if split == 'train':
         # this should always dispatch to transforms_imagenet_train
         transform = create_transform(
             input_size=args.image_size,
@@ -58,34 +82,53 @@ def build_deit_transform(is_train, args):
     return transforms.Compose(t)
 
 
-def get_transform(split, args):
-
-    if split == 'train':
-        if args.deit_recipe:
-            transform = build_deit_transform(is_train=True, args=args)
-        else:
-            transform = transforms.Compose([
-                transforms.Resize((args.image_size+32, args.image_size+32)),
-                transforms.RandomCrop((args.image_size, args.image_size)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(brightness=0.1, 
-                    contrast=0.1, saturation=0.1, hue=0.1),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                    std=[0.229, 0.224, 0.225])
-                ])
-    else:
-        if args.deit_recipe:
-            transform = build_deit_transform(is_train=False, args=args)
-        else:
-            transform = transforms.Compose([
-                transforms.Resize((args.image_size, args.image_size)), 
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                    std=[0.229, 0.224, 0.225])
-                ])
-
+def simclr_transform(args):
+    s = 1
+    color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
+    transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=args.image_size),
+            transforms.RandomHorizontalFlip(),  # with 0.5 probability
+            transforms.RandomApply([color_jitter], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.ToTensor(),
+        ])
+        
     return transform
+
+                
+class ApplyTransform:
+    """
+    A stochastic data augmentation module that transforms any given data example randomly
+    resulting in two correlated views of the same example,
+    denoted x ̃i and x ̃j, which we consider as a positive pair.
+    """
+    def __init__(self, split, args):
+        self.split = split
+        self.args = args
+
+        if args.deit_recipe:
+            self.mode == 'deit_recipe'
+        elif args.mode == 'simclr':
+            self.mode = 'simclr'
+        else:
+            self.mode = 'default'
+
+        self.transform = self.build_transform()
+    
+    def __call__(self, x):
+        if self.mode == 'simclr':
+            return self.transform(x), self.transform(x)
+        else:
+            return self.transform(x)
+
+    def build_transform(self):
+        if self.mode == 'deit_recipe':
+            transform = deit_transform(split=self.split, args=self.args)
+        elif self.mode == 'simclr' and self.split == 'train':
+            transform = simclr_transform(args=self.args)
+        else:
+            transform = standard_transform(split=self.split, args=self.args)
+        return transform
 
 
 class CIFAR10DM(LightningDataModule):
@@ -96,8 +139,8 @@ class CIFAR10DM(LightningDataModule):
         self.batch_size = args.batch_size
         self.image_size = args.image_size
         self.num_workers = args.no_cpu_workers
-        self.transform_train = get_transform(split='train', args=args)
-        self.transform_eval = get_transform(split='val', args=args)
+        self.transform_train = ApplyTransform(split='train', args=args)
+        self.transform_eval = ApplyTransform(split='val', args=args)
 
     def prepare_data(self):
         '''called only once and on 1 GPU'''
@@ -142,8 +185,8 @@ class CIFAR100DM(LightningDataModule):
         self.batch_size = args.batch_size
         self.image_size = args.image_size
         self.num_workers = args.no_cpu_workers
-        self.transform_train = get_transform(split='train', args=args)
-        self.transform_eval = get_transform(split='val', args=args)
+        self.transform_train = ApplyTransform(split='train', args=args)
+        self.transform_eval = ApplyTransform(split='val', args=args)
 
     def prepare_data(self):
         '''called only once and on 1 GPU'''
@@ -188,8 +231,8 @@ class ImageNetDM(LightningDataModule):
         self.batch_size = args.batch_size
         self.image_size = args.image_size
         self.num_workers = args.no_cpu_workers
-        self.transform_train = get_transform(split='train', args=args)
-        self.transform_eval = get_transform(split='val', args=args)
+        self.transform_train = ApplyTransform(split='train', args=args)
+        self.transform_eval = ApplyTransform(split='val', args=args)
         
     def setup(self, stage=None):
         '''called on each GPU separately - stage defines if we are at fit or test step'''

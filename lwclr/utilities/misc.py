@@ -7,11 +7,15 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from .datamodules import return_prepared_dm
-from lwclr.models.lit_lwclr import LayerWiseCLR
+import lwclr.models as models
+#from lwclr.models.lit_lwclr import LayerWiseCLR
 
 def ret_args(ret_parser=False):
 
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--mode', type=str, choices=['simclr', 'lwclr'], default='lwclr',
+                        help='Framework for training and evaluation')
     
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
     parser.add_argument('--no_cpu_workers', type=int, default=4, help='CPU workers for data loading.')
@@ -32,7 +36,8 @@ def ret_args(ret_parser=False):
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Batch size for train/val/test.')
     
-    parser = LayerWiseCLR.add_model_specific_args(parser)
+    parser = models.LitLayerWiseCLR.add_model_specific_args(parser)
+    
     parser = pl.Trainer.add_argparse_args(parser)
     parser.set_defaults(gpus=1, max_epochs=2, gradient_clip_val=1.0)
     parser.set_defaults(precision=32, log_gpu_memory=None, profiler=None)
@@ -41,9 +46,9 @@ def ret_args(ret_parser=False):
         return parser
     args = parser.parse_args()
 
-    args.run_name = '{}_{}_is{}_bs{}_{}lr{}_pt{}_seed{}'.format(
-    args.dataset_name, args.model_name, args.image_size, args.batch_size, 
-    args.optimizer, args.learning_rate, args.pretrained_checkpoint, args.seed)
+    args.run_name = '{}_{}_{}_is{}_bs{}_{}lr{}_seed{}'.format(
+    args.mode, args.dataset_name, args.model_name, args.image_size, args.batch_size, 
+    args.optimizer, args.learning_rate, args.seed)
 
     if args.deit_recipe:
         ''' taken from DeiT paper
@@ -85,7 +90,18 @@ def load_trainer(args, dm, wandb_logger):
         total_steps = trainer.max_epochs * len(dm.train_dataloader())
     args.total_steps = total_steps
 
+    if args.warmup_epochs:
+        args.warmup_steps = trainer.max_epochs * len(dm.train_dataloader())
+
     return trainer
+
+
+def load_plmodel(args):
+    if args.mode == 'lwclr':
+        model = models.LitLayerWiseCLR(args)
+    elif args.mode == 'simclr':
+        model = models.LitSimCLR(args)
+    return model
 
 
 def environment_loader(args, init=True):
@@ -105,6 +121,6 @@ def environment_loader(args, init=True):
 
     # setup model and trainer
     trainer = load_trainer(args, dm, wandb_logger)
-    model = LayerWiseCLR(args)
+    model = load_plmodel(args)
 
     return dm, trainer, model

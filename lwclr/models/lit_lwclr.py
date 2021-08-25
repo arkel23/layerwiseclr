@@ -10,7 +10,34 @@ from einops.layers.torch import Rearrange
 from .model_selection import load_model
 from .scheduler import WarmupCosineSchedule
 
-class LWCLR(nn.Module):
+class CLSHead(nn.Module):
+    def __init__(self, args, configuration):
+        super().__init__()
+        
+        if args.interm_features_fc:
+            self.inter_class_head = nn.Sequential(
+                nn.Linear(configuration.num_hidden_layers, 1),
+                Rearrange(' b d 1 -> b d'),
+                nn.GELU(),
+                nn.LayerNorm(cconfiguration.hidden_size, eps=configuration.layer_norm_eps),
+                nn.Linear(configuration.hidden_size, configuration.num_classes)
+            )
+        else:
+            self.class_head = nn.Sequential(
+                nn.Linear(configuration.hidden_size, configuration.representation_size),
+                nn.GELU(),
+                nn.LayerNorm(configuration.hidden_size, eps=configuration.layer_norm_eps),
+                nn.Linear(configuration.representation_size, configuration.num_classes)
+                )  
+    
+    def forward(self, x):
+        if hasattr(self, 'inter_class_head'):
+            return self.inter_class_head(torch.stack(x, dim=-1))    
+        else:
+            return self.class_head(x)
+       
+
+class LWCLRHead(nn.Module):
     def __init__(self, args, configuration):
         super().__init__()
         
@@ -37,7 +64,7 @@ class LWCLR(nn.Module):
         return self.class_head(class_batch)
 
         
-class LayerWiseCLR(pl.LightningModule):
+class LitLayerWiseCLR(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -99,7 +126,7 @@ class LayerWiseCLR(pl.LightningModule):
         else: 
             optimizer = torch.optim.SGD(self.parameters(), lr=self.args.learning_rate, 
             momentum=0.9, weight_decay=self.args.weight_decay)
-        
+
         scheduler = {'scheduler': WarmupCosineSchedule(
         optimizer, warmup_steps=self.args.warmup_steps, 
         t_total=self.args.total_steps),
@@ -111,25 +138,32 @@ class LayerWiseCLR(pl.LightningModule):
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
 
-        parser.add_argument('--optimizer', choices=['sgd', 'adam'], default='sgd')
-        parser.add_argument('--learning_rate', default=0.001, type=float,
-                            help='Initial learning rate.')  
-        parser.add_argument('--weight_decay', type=float, default=0.00)
+        parser.add_argument('--temperature', type=float, default=0.5,
+                        help='temperature parameter for ntxent loss')        
+
+        parser.add_argument('--optimizer', choices=['sgd', 'adam'], default='adam')
+        parser.add_argument('--learning_rate', default=3e-4, type=float,
+                        help='Initial learning rate.')  
+        parser.add_argument('--weight_decay', type=float, default=0.05)
         parser.add_argument('--warmup_steps', type=int, default=1000, help='Warmup steps for LR scheduler.')
-        
+        parser.add_argument('--warmup_epochs', type=int, default=0,
+                        help='If doing warmup in terms of epochs instead of steps.')
+
         parser.add_argument('--model_name', choices=['B_16', 'B_32', 'L_16', 'L_32'], default='B_16',
                         help='Which model architecture to use')
         parser.add_argument('--pretrained_checkpoint',action='store_true',
-                            help='Loads pretrained model if available')
+                        help='Loads pretrained model if available')
         parser.add_argument('--checkpoint_path', type=str, default=None)     
         parser.add_argument('--transfer_learning', action='store_true',
-                            help='Load partial state dict for transfer learning'
+                        help='Load partial state dict for transfer learning'
                             'Resets the [embeddings, logits and] fc layer for ViT')    
         parser.add_argument('--load_partial_mode', choices=['full_tokenizer', 'patchprojection', 
                             'posembeddings', 'clstoken', 'patchandposembeddings', 
                             'patchandclstoken', 'posembeddingsandclstoken', None], default=None,
-                            help='Load pre-processing components to speed up training')
+                        help='Load pre-processing components to speed up training')
 
+        parser.add_argument('--interm_features_fc', action='store_true', 
+                        help='If use this flag creates FC using intermediate features instead of only last layer.')
         parser.add_argument('--conv_patching', action='store_true', 
                         help='If use this flag uses a small convolutional stem instead of single large-stride convolution for patch projection.')
         
