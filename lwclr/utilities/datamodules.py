@@ -55,7 +55,7 @@ def deit_transform(split, args):
     t = []
     if resize_im:
         size = int((256 / 224) * args.image_size) # to maintain same ratio w.r.t. 224 images
-        t.append(transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC))
+        t.append(transforms.Resize(size, interpolation=3))
         t.append(transforms.CenterCrop(args.image_size))
 
     t.append(transforms.ToTensor())
@@ -89,7 +89,7 @@ class ApplyTransform:
         self.args = args
 
         if args.deit_recipe:
-            self.mode == 'deit_recipe'
+            self.mode = 'deit_recipe'
         elif args.mode == 'simclr':
             self.mode = 'simclr'
         else:
