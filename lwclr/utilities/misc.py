@@ -13,8 +13,8 @@ def ret_args(ret_parser=False):
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--mode', type=str, choices=['simclr', 'lwclr', 'linear_eval', 'fine_tuning'],
-                        default='lwclr', help='Framework for training and evaluation')
+    parser.add_argument('--mode', type=str, choices=['simclr', 'simlwclr', 'linear_eval', 'fine_tuning'],
+                        default='simlwclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
     parser.add_argument('--no_cpu_workers', type=int, default=4, help='CPU workers for data loading.')
@@ -35,7 +35,7 @@ def ret_args(ret_parser=False):
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Batch size for train/val/test.')
     
-    parser = models.LitLayerWiseCLR.add_model_specific_args(parser)
+    parser = models.LitSimLWCLR.add_model_specific_args(parser)
     
     parser = pl.Trainer.add_argparse_args(parser)
     parser.set_defaults(gpus=1, max_epochs=2, gradient_clip_val=1.0)
@@ -97,8 +97,8 @@ def load_trainer(args, model, wandb_logger):
 
 
 def load_plmodel(args):
-    if args.mode == 'lwclr':
-        model = models.LitLayerWiseCLR(args)
+    if args.mode == 'simlwclr':
+        model = models.LitSimLWCLR(args)
     elif args.mode == 'simclr':
         model = models.LitSimCLR(args)
     elif args.mode == 'linear_eval' or args.mode == 'fine_tuning':

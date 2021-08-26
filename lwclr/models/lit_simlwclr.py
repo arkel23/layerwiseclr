@@ -2,121 +2,86 @@ from argparse import ArgumentParser
 
 import torch
 import torch.nn as nn
-import torchmetrics
 import pytorch_lightning as pl
-import einops
-from einops.layers.torch import Rearrange
 
 from .model_selection import load_model
 from .scheduler import WarmupCosineSchedule
+from .custom_losses import NT_XentSimCLR
 
-class CLSHead(nn.Module):
-    def __init__(self, args, configuration):
-        super().__init__()
+class SimLWCLR(nn.Module):
+    def __init__(self, encoder, projection_dim, n_features, layers_contrast=[0, -1]):
+        super(SimLWCLR, self).__init__()
+
+        self.encoder = encoder
+
+        self.projector = nn.Sequential(
+            nn.Linear(n_features, n_features, bias=False),
+            nn.GELU(),
+            nn.Linear(n_features, projection_dim, bias=False),
+        )
         
-        if args.interm_features_fc:
-            self.inter_class_head = nn.Sequential(
-                nn.Linear(configuration.num_hidden_layers, 1),
-                Rearrange(' b d 1 -> b d'),
-                nn.GELU(),
-                nn.LayerNorm(configuration.hidden_size, eps=configuration.layer_norm_eps),
-                nn.Linear(configuration.hidden_size, configuration.num_classes)
-            )
-        else:
-            self.class_head = nn.Sequential(
-                nn.Linear(configuration.hidden_size, configuration.representation_size),
-                nn.GELU(),
-                nn.LayerNorm(configuration.hidden_size, eps=configuration.layer_norm_eps),
-                nn.Linear(configuration.representation_size, configuration.num_classes)
-                )  
+        self.layers_contrast = layers_contrast
+    
+    def inference(self, x):
+        return self.encoder(x)[-1][:, 0]
     
     def forward(self, x):
-        if hasattr(self, 'inter_class_head'):
-            return self.inter_class_head(torch.stack(x, dim=-1))    
-        else:
-            return self.class_head(x)
-       
+        interm_features = self.encoder(x)
+        h_i = interm_features[self.layers_contrast[0]]
+        h_j = interm_features[self.layers_contrast[1]]
 
-class LWCLRHead(nn.Module):
-    def __init__(self, args, configuration):
-        super().__init__()
-        
-        if configuration.load_repr_layer:
-            self.repr_layer = nn.Sequential(
-                nn.Linear(configuration.hidden_size, configuration.representation_size),
-                nn.ReLU
-            )
-            pre_logits_size = configuration.representation_size
-        else:
-            pre_logits_size = configuration.hidden_size
-        
-        self.class_head = nn.Sequential(
-            nn.LayerNorm(pre_logits_size, eps=configuration.layer_norm_eps),
-            nn.Linear(configuration.representation_size, args.batch_size)
-        )
+        z_i = self.projector(h_i[:, 0])
+        z_j = self.projector(h_j[:, 0])
+        return h_i, h_j, z_i, z_j
+
+
+class LitSimLWCLR(pl.LightningModule):
     
-    def forward(self, interm_features):
-        class_batch = torch.cat((interm_features), dim=0)[:, 0, :]
-        
-        if hasattr(self, 'repr_layer'):
-            class_batch = self.repr_layer(class_batch)
-        
-        return self.class_head(class_batch)
-
-        
-class LitLayerWiseCLR(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        
-        self.backbone = load_model(args)
-        self.LWCLR = LWCLRHead(args, self.backbone.configuration)
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.backbone = load_model(args)                
+        
+        self.n_features = self.backbone.configuration.hidden_size
+        self.representation_size = self.backbone.configuration.representation_size
+        
+        self.layers_contrast = [args.layer_pair_1, args.layer_pair_2]
+
+        self.model = SimLWCLR(self.backbone, 
+            projection_dim=self.backbone.configuration.representation_size,
+            n_features=self.n_features, layers_contrast=self.layers_contrast)
+
+        self.criterion = NT_XentSimCLR(temperature=args.temperature)
         
     def forward(self, x):
         # return last layer cls token features
-        interm_features = self.backbone(x)
-        return interm_features[-1][:, 0]
+        return self.model.inference(x)
+        
+    def shared_step(self, batch):
+        x, _ = batch
+        h_i, h_j, z_i, z_j = self.model(x)
+        loss = self.criterion(z_i, z_j)
+        return loss
 
     def training_step(self, batch, batch_idx):
-        x, _ = batch
-        labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
-        new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
-        
-        interm_features= self.backbone(x)
-        logits = self.LWCLR(interm_features)
-        
-        loss = self.criterion(logits, new_labels)
+        loss = self.shared_step(batch)
         self.log('train_loss', loss, on_epoch=True, on_step=True)
-        
-        curr_lr = self.optimizers().param_groups[0]['lr']
-        self.log('learning_rate', curr_lr, on_epoch=False, on_step=True)
         
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, _ = batch
-        labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
-        new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
-        
-        interm_features= self.backbone(x)
-        logits = self.LWCLR(interm_features)
-        
-        loss = self.criterion(logits, new_labels)
+        loss = self.shared_step(batch)
         self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
         
-    def test_step(self, batch, batch_idx):
-        x, _ = batch
-        labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
-        new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
-        
-        interm_features= self.backbone(x)
-        logits = self.LWCLR(interm_features)
-        
-        loss = self.criterion(logits, new_labels)
-        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
+        return loss
 
+    def test_step(self, batch, batch_idx):
+        loss = self.shared_step(batch)
+        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
+        
+        return loss
+        
     def configure_optimizers(self):
         if self.args.optimizer == 'adam':
             optimizer = torch.optim.Adam(self.parameters(), 
@@ -151,7 +116,11 @@ class LitLayerWiseCLR(pl.LightningModule):
                         help='Which model architecture to use')
         parser.add_argument('--projection_layers', type=int, choices=[1, 2, 3], default=1,
                             help='Number of layers for projection head.')
-        
+        parser.add_argument('--layer_pair_1', type=int, default=0, 
+                        help='Layer features for pairs')
+        parser.add_argument('--layer_pair_2', type=int, default=-1, 
+                        help='Layer features for pairs')
+
         parser.add_argument('--pretrained_checkpoint',action='store_true',
                         help='Loads pretrained model if available')
         parser.add_argument('--checkpoint_path', type=str, default=None)     
