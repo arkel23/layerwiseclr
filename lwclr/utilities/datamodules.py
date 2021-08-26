@@ -123,7 +123,7 @@ class CIFAR10DM(LightningDataModule):
         self.num_workers = args.no_cpu_workers
         self.transform_train = ApplyTransform(split='train', args=args)
         self.transform_eval = ApplyTransform(split='val', args=args)
-
+        
     def prepare_data(self):
         '''called only once and on 1 GPU'''
         # download data
@@ -152,12 +152,12 @@ class CIFAR10DM(LightningDataModule):
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
         
     def test_dataloader(self):
         '''returns test dataloader'''
         return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)
-    
+        
 
 class CIFAR100DM(LightningDataModule):
 
@@ -169,7 +169,7 @@ class CIFAR100DM(LightningDataModule):
         self.num_workers = args.no_cpu_workers
         self.transform_train = ApplyTransform(split='train', args=args)
         self.transform_eval = ApplyTransform(split='val', args=args)
-
+        
     def prepare_data(self):
         '''called only once and on 1 GPU'''
         # download data
@@ -198,12 +198,12 @@ class CIFAR100DM(LightningDataModule):
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)
-    
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)   
+         
             
 class ImageNetDM(LightningDataModule):
 
@@ -240,7 +240,7 @@ class ImageNetDM(LightningDataModule):
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
         
     def test_dataloader(self):
         '''returns test dataloader'''

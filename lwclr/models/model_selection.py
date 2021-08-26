@@ -13,21 +13,21 @@ def load_model(args, ret_interm_repr=True):
     if args.checkpoint_path:
         if args.load_partial_mode:
             model.model.load_partial(weights_path=args.checkpoint_path, 
-                pretrained_image_size=self.configuration.pretrained_image_size, 
+                pretrained_image_size=model.configuration.pretrained_image_size, 
                 pretrained_mode=args.load_partial_mode, verbose=True)
         else:
             state_dict = torch.load(args.checkpoint_path, map_location=torch.device('cpu'))
             expected_missing_keys = []
 
             load_patch_embedding = (
-                (self.configuration.num_channels==self.configuration.pretrained_num_channels) and
+                (model.configuration.num_channels==model.configuration.pretrained_num_channels) and
                 (not(args.conv_patching))
             )
             
             if ('patch_embedding.weight' in state_dict and load_patch_embedding):
                 expected_missing_keys += ['model.patch_embedding.weight', 'model.patch_embedding.bias']
             
-            if ('pre_logits.weight' in state_dict and self.configuration.load_repr_layer==False):
+            if ('pre_logits.weight' in state_dict and model.configuration.load_repr_layer==False):
                 expected_missing_keys += ['model.pre_logits.weight', 'model.pre_logits.bias']
                     
             if ('model.fc.weight' in state_dict and model.config.load_fc_layer):

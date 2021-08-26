@@ -4,7 +4,7 @@ import argparse
 import wandb
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 import lwclr.models as models
 from .datamodules import CIFAR10DM, CIFAR100DM, ImageNetDM
@@ -13,9 +13,9 @@ def ret_args(ret_parser=False):
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--mode', type=str, choices=['simclr', 'lwclr'], default='lwclr',
-                        help='Framework for training and evaluation')
-    
+    parser.add_argument('--mode', type=str, choices=['simclr', 'lwclr', 'linear_eval', 'fine_tuning'],
+                        default='lwclr', help='Framework for training and evaluation')
+
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
     parser.add_argument('--no_cpu_workers', type=int, default=4, help='CPU workers for data loading.')
 
@@ -46,8 +46,8 @@ def ret_args(ret_parser=False):
     args = parser.parse_args()
 
     args.run_name = '{}_{}_{}_is{}_bs{}_{}lr{}_seed{}'.format(
-    args.mode, args.dataset_name, args.model_name, args.image_size, args.batch_size, 
-    args.optimizer, args.learning_rate, args.seed)
+        args.mode, args.dataset_name, args.model_name, args.image_size, args.batch_size, 
+        args.optimizer, args.learning_rate, args.seed)
 
     if args.deit_recipe:
         ''' taken from DeiT paper
@@ -79,15 +79,18 @@ def load_trainer(args, model, wandb_logger):
     checkpoint_callback = ModelCheckpoint(
         dirpath=os.path.join(args.results_dir, args.run_name), 
         filename='{epoch}', monitor='val_loss', save_on_train_epoch_end=False, 
-        verbose=True, save_last=True, save_top_k=1, save_weights_only=True, 
+        verbose=True, save_top_k=-1, save_last=True, save_weights_only=True,
         mode='min', every_n_epochs=args.save_checkpoint_freq)
 
-    #online_eval_callback = cb.ssl_online.SSLOnlineEvaluator(args.dataset_name,
-    #    drop_p=0.0, z_dim=model.backbone.configuration.hidden_size, num_classes=args.num_classes)
-    online_eval_callback = models.SSLOnlineLinearEvaluator(
-        dataset=args.dataset_name, z_dim=model.backbone.configuration.hidden_size, num_classes=args.num_classes)
+    lr_monitor = LearningRateMonitor(logging_interval='step')
 
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, online_eval_callback])
+    if args.mode not in ['linear_eval', 'fine_tuning']:
+        online_eval_callback = models.SSLOnlineLinearEvaluator(
+            mode=args.mode, z_dim=model.backbone.configuration.hidden_size, 
+            num_classes=args.num_classes, lr=args.learning_rate)
+        trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, lr_monitor, online_eval_callback])
+    else:
+        trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, lr_monitor])
     trainer.logger = wandb_logger
     
     return trainer
@@ -98,6 +101,8 @@ def load_plmodel(args):
         model = models.LitLayerWiseCLR(args)
     elif args.mode == 'simclr':
         model = models.LitSimCLR(args)
+    elif args.mode == 'linear_eval' or args.mode == 'fine_tuning':
+        model = models.LitEvaluator(args)
     return model
 
 

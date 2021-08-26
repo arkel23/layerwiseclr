@@ -1,9 +1,7 @@
 # https://github.com/Spijkervet/SimCLR/blob/master/main_pl.py
-from argparse import ArgumentParser
-
+# https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/models/self_supervised/simclr/simclr_module.py
 import torch
-import torch.nn as nn
-import  pytorch_lightning as pl
+import pytorch_lightning as pl
 
 from .model_selection import load_model
 from .scheduler import WarmupCosineSchedule
@@ -23,24 +21,34 @@ class LitSimCLR(pl.LightningModule):
         self.model = SimCLR(self.backbone, 
             projection_dim=self.backbone.configuration.representation_size,
             n_features=self.n_features)
-        self.criterion = NT_XentSimCLR(batch_size=args.batch_size, 
-            temperature=args.temperature, world_size=1)
 
+        self.criterion = NT_XentSimCLR(temperature=args.temperature)
+        
     def forward(self, x_i):
         return self.model.inference(x_i)
 
-    def training_step(self, batch, batch_idx):
-        # training_step defined the train loop. It is independent of forward
+    def shared_step(self, batch):
         (x_i, x_j), _ = batch
-
         h_i, h_j, z_i, z_j = self.model(x_i, x_j)
-
         loss = self.criterion(z_i, z_j)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self.shared_step(batch)
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         
-        curr_lr = self.optimizers().param_groups[0]['lr']
-        self.log('learning_rate', curr_lr, on_epoch=False, on_step=True)
+        return loss
 
+    def validation_step(self, batch, batch_idx):
+        loss = self.shared_step(batch)
+        self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
+        
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self.shared_step(batch)
+        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
+        
         return loss
 
     def configure_optimizers(self):

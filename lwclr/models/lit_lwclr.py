@@ -19,7 +19,7 @@ class CLSHead(nn.Module):
                 nn.Linear(configuration.num_hidden_layers, 1),
                 Rearrange(' b d 1 -> b d'),
                 nn.GELU(),
-                nn.LayerNorm(cconfiguration.hidden_size, eps=configuration.layer_norm_eps),
+                nn.LayerNorm(configuration.hidden_size, eps=configuration.layer_norm_eps),
                 nn.Linear(configuration.hidden_size, configuration.num_classes)
             )
         else:
@@ -70,18 +70,16 @@ class LitLayerWiseCLR(pl.LightningModule):
         self.args = args
         
         self.backbone = load_model(args)
-        self.LWCLR = LWCLR(args, self.backbone.configuration)
+        self.LWCLR = LWCLRHead(args, self.backbone.configuration)
 
         self.criterion = nn.CrossEntropyLoss()
         
     def forward(self, x):
-        # use forward for inference/predictions
-        embedding = self.backbone(x)
-        
-        return embedding
+        # return last layer cls token features
+        interm_features = self.backbone(x)
+        return interm_features[-1][:, 0]
 
     def training_step(self, batch, batch_idx):
-        # forward and backward pass and log
         x, _ = batch
         labels = torch.tensor([i for i in range(x.shape[0])], device=self.device)
         new_labels = torch.cat([labels for _ in range(self.backbone.configuration.num_hidden_layers)], dim=0)
@@ -106,7 +104,7 @@ class LitLayerWiseCLR(pl.LightningModule):
         logits = self.LWCLR(interm_features)
         
         loss = self.criterion(logits, new_labels)
-        self.log('val_loss', loss, on_epoch=True, on_step=False)
+        self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
         
     def test_step(self, batch, batch_idx):
         x, _ = batch
@@ -117,7 +115,7 @@ class LitLayerWiseCLR(pl.LightningModule):
         logits = self.LWCLR(interm_features)
         
         loss = self.criterion(logits, new_labels)
-        self.log('test_loss', loss, on_epoch=True, on_step=False)
+        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
 
     def configure_optimizers(self):
         if self.args.optimizer == 'adam':
@@ -151,6 +149,9 @@ class LitLayerWiseCLR(pl.LightningModule):
 
         parser.add_argument('--model_name', choices=['B_16', 'B_32', 'L_16', 'L_32'], default='B_16',
                         help='Which model architecture to use')
+        parser.add_argument('--projection_layers', type=int, choices=[1, 2, 3], default=1,
+                            help='Number of layers for projection head.')
+        
         parser.add_argument('--pretrained_checkpoint',action='store_true',
                         help='Loads pretrained model if available')
         parser.add_argument('--checkpoint_path', type=str, default=None)     

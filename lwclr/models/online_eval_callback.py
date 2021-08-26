@@ -1,3 +1,5 @@
+# https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/callbacks/ssl_online.py
+# https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/models/self_supervised/evaluator.py
 from typing import Optional, Sequence, Tuple, Union
 
 import torch
@@ -8,26 +10,7 @@ from torch.nn import functional as F
 from torch.optim import Optimizer
 from torchmetrics.functional import accuracy
 
-class LogisticRegressionLinearEvaluator(nn.Module):
-    def __init__(self, n_input, n_classes):
-        super().__init__()
-        self.n_input = n_input
-        self.n_classes = n_classes
-        # use linear classifier
-        self.block_forward = nn.Sequential(Flatten(), nn.Linear(n_input, n_classes, bias=True))
-
-    def forward(self, x):
-        logits = self.block_forward(x)
-        return logits
-
-
-class Flatten(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, input_tensor):
-        return input_tensor.view(input_tensor.size(0), -1)
-
+from .heads import LinearHead
 
 class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
     """Attaches a MLP for fine-tuning using the standard self-supervised protocol.
@@ -39,19 +22,18 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         online_eval = SSLOnlineEvaluator(
             z_dim=model.z_dim,
             num_classes=model.num_classes,
-            dataset='imagenet'
         )
     """
 
     def __init__(
         self,
-        dataset: str,
+        mode: str,
         z_dim: int = None,
         num_classes: int = None,
+        lr: float = 3e-4,
     ):
         """
         Args:
-            dataset: if stl10, need to get the labeled batch
             z_dim: Representation dimension
             num_classes: Number of classes
         """
@@ -59,17 +41,18 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
 
         self.optimizer: Optimizer
 
+        self.mode = mode
         self.z_dim = z_dim
         self.num_classes = num_classes
-        self.dataset = dataset
+        self.lr = lr
 
     def on_pretrain_routine_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        pl_module.non_linear_evaluator = LogisticRegressionLinearEvaluator(
+        pl_module.linear_evaluator = LinearHead(
             n_input=self.z_dim,
             n_classes=self.num_classes,
         ).to(pl_module.device)
 
-        self.optimizer = torch.optim.Adam(pl_module.non_linear_evaluator.parameters(), lr=1e-4)
+        self.optimizer = torch.optim.Adam(pl_module.linear_evaluator.parameters(), lr=self.lr)
 
     def get_representations(self, pl_module: LightningModule, x: Tensor) -> Tensor:
         representations = pl_module(x)
@@ -79,9 +62,13 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
     def to_device(self, batch: Sequence, device: Union[str, device]) -> Tuple[Tensor, Tensor]:
         inputs, y = batch
 
-        x = inputs[0]
-        x = x.to(device)
-        y = y.to(device)
+        if self.mode == 'simclr':
+            x = inputs[0]
+            x = x.to(device)
+            y = y.to(device)
+        else:
+            x = inputs.to(device)
+            y = y.to(device)
 
         return x, y
 
@@ -102,18 +89,18 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         representations = representations.detach()
 
         # forward pass
-        mlp_logits = pl_module.non_linear_evaluator(representations)  # type: ignore[operator]
-        mlp_loss = F.cross_entropy(mlp_logits, y)
+        logits = pl_module.linear_evaluator(representations)  # type: ignore[operator]
+        loss = F.cross_entropy(logits, y)
 
         # update finetune weights
-        mlp_loss.backward()
+        loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
 
         # log metrics
-        train_acc = accuracy(mlp_logits.softmax(-1), y)
-        pl_module.log("online_train_acc", train_acc, on_step=True, on_epoch=False)
-        pl_module.log("online_train_loss", mlp_loss, on_step=True, on_epoch=False)
+        train_acc = accuracy(logits.softmax(-1), y)
+        pl_module.log("online_train_acc", train_acc, on_step=False, on_epoch=True, sync_dist=True)
+        pl_module.log("online_train_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
 
     def on_validation_batch_end(
         self,
@@ -132,10 +119,38 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         representations = representations.detach()
 
         # forward pass
-        mlp_logits = pl_module.non_linear_evaluator(representations)  # type: ignore[operator]
-        mlp_loss = F.cross_entropy(mlp_logits, y)
+        with torch.no_grad():
+            logits = pl_module.linear_evaluator(representations)  # type: ignore[operator]
+            loss = F.cross_entropy(logits, y)
 
         # log metrics
-        val_acc = accuracy(mlp_logits.softmax(-1), y)
-        pl_module.log("val_acc", val_acc, on_step=False, on_epoch=True, sync_dist=True)
-        pl_module.log("val_loss", mlp_loss, on_step=False, on_epoch=True, sync_dist=True)
+        val_acc = accuracy(logits.softmax(-1), y)
+        pl_module.log("online_val_acc", val_acc, on_step=False, on_epoch=True, sync_dist=True)
+        pl_module.log("online_val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+
+
+    def on_test_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs: Sequence,
+        batch: Sequence,
+        batch_idx: int,
+        dataloader_idx: int,
+    ) -> None:
+        x, y = self.to_device(batch, pl_module.device)
+
+        with torch.no_grad():
+            representations = self.get_representations(pl_module, x)
+
+        representations = representations.detach()
+
+        # forward pass
+        with torch.no_grad():
+            logits = pl_module.linear_evaluator(representations)  # type: ignore[operator]
+            loss = F.cross_entropy(logits, y)
+
+        # log metrics
+        test_acc = accuracy(logits.softmax(-1), y)
+        pl_module.log("online_test_acc", test_acc, on_step=False, on_epoch=True, sync_dist=True)
+        pl_module.log("online_test_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
