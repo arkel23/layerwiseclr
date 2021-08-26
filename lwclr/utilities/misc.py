@@ -6,9 +6,8 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from .datamodules import return_prepared_dm
 import lwclr.models as models
-#from lwclr.models.lit_lwclr import LayerWiseCLR
+from .datamodules import CIFAR10DM, CIFAR100DM, ImageNetDM
 
 def ret_args(ret_parser=False):
 
@@ -74,25 +73,23 @@ def ret_args(ret_parser=False):
 
     return args
 
-
-def load_trainer(args, dm, wandb_logger):
+def load_trainer(args, model, wandb_logger):
+    # https://lightning-bolts.readthedocs.io/en/latest/self_supervised_callbacks.html
+    # https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/callbacks/ssl_online.py#L66
     checkpoint_callback = ModelCheckpoint(
         dirpath=os.path.join(args.results_dir, args.run_name), 
-        filename='{epoch}', monitor='val_loss', verbose=True, save_last=True,
-        save_top_k=1, save_weights_only=True, mode='min')
-    
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback])
+        filename='{epoch}', monitor='val_loss', save_on_train_epoch_end=False, 
+        verbose=True, save_last=True, save_top_k=1, save_weights_only=True, 
+        mode='min', every_n_epochs=args.save_checkpoint_freq)
+
+    #online_eval_callback = cb.ssl_online.SSLOnlineEvaluator(args.dataset_name,
+    #    drop_p=0.0, z_dim=model.backbone.configuration.hidden_size, num_classes=args.num_classes)
+    online_eval_callback = models.SSLOnlineLinearEvaluator(
+        dataset=args.dataset_name, z_dim=model.backbone.configuration.hidden_size, num_classes=args.num_classes)
+
+    trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, online_eval_callback])
     trainer.logger = wandb_logger
     
-    if trainer.max_steps:
-        total_steps = trainer.max_steps
-    else:
-        total_steps = trainer.max_epochs * len(dm.train_dataloader())
-    args.total_steps = total_steps
-
-    if args.warmup_epochs:
-        args.warmup_steps = trainer.max_epochs * len(dm.train_dataloader())
-
     return trainer
 
 
@@ -102,6 +99,33 @@ def load_plmodel(args):
     elif args.mode == 'simclr':
         model = models.LitSimCLR(args)
     return model
+
+
+def return_prepared_dm(args):
+
+    assert args.dataset_path, "Dataset path must not be empty."
+    # setup data
+    if args.dataset_name == 'cifar10':
+        dm = CIFAR10DM(args)
+    elif args.dataset_name == 'cifar100':
+        dm = CIFAR100DM(args)
+    elif args.dataset_name == 'imagenet':
+        dm = ImageNetDM(args)
+    
+    dm.prepare_data()
+    dm.setup('fit')
+    args.num_classes = dm.num_classes
+
+    if args.max_steps:
+        total_steps = args.max_steps
+    else:
+        total_steps = args.max_epochs * len(dm.train_dataloader())
+    args.total_steps = total_steps
+
+    if args.warmup_epochs:
+        args.warmup_steps = args.max_epochs * len(dm.train_dataloader())
+    
+    return dm
 
 
 def environment_loader(args, init=True):
@@ -120,7 +144,7 @@ def environment_loader(args, init=True):
     dm = return_prepared_dm(args)
 
     # setup model and trainer
-    trainer = load_trainer(args, dm, wandb_logger)
     model = load_plmodel(args)
-
+    trainer = load_trainer(args, model, wandb_logger)
+    
     return dm, trainer, model

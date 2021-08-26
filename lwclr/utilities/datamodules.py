@@ -8,24 +8,6 @@ from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 from pytorch_lightning import LightningDataModule
 from timm.data import create_transform
 
-def return_prepared_dm(args):
-
-    assert args.dataset_path, "Dataset path must not be empty."
-    # setup data
-    if args.dataset_name == 'cifar10':
-        dm = CIFAR10DM(args)
-    elif args.dataset_name == 'cifar100':
-        dm = CIFAR100DM(args)
-    elif args.dataset_name == 'imagenet':
-        dm = ImageNetDM(args)
-    
-    dm.prepare_data()
-    dm.setup('fit')
-    args.num_classes = dm.num_classes
-    
-    return dm
-
-
 def standard_transform(split, args):
     if split == 'train':
         transform = transforms.Compose([
@@ -166,11 +148,11 @@ class CIFAR10DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
@@ -212,11 +194,11 @@ class CIFAR100DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
@@ -254,11 +236,11 @@ class ImageNetDM(LightningDataModule):
             
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''

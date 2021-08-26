@@ -144,7 +144,7 @@ class LitLayerWiseCLR(pl.LightningModule):
         parser.add_argument('--optimizer', choices=['sgd', 'adam'], default='adam')
         parser.add_argument('--learning_rate', default=3e-4, type=float,
                         help='Initial learning rate.')  
-        parser.add_argument('--weight_decay', type=float, default=0.05)
+        parser.add_argument('--weight_decay', type=float, default=0.0)
         parser.add_argument('--warmup_steps', type=int, default=1000, help='Warmup steps for LR scheduler.')
         parser.add_argument('--warmup_epochs', type=int, default=0,
                         help='If doing warmup in terms of epochs instead of steps.')

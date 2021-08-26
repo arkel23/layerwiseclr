@@ -26,15 +26,14 @@ class LitSimCLR(pl.LightningModule):
         self.criterion = NT_XentSimCLR(batch_size=args.batch_size, 
             temperature=args.temperature, world_size=1)
 
-    def forward(self, x_i, x_j):
-        h_i, h_j, z_i, z_j = self.model(x_i, x_j)
-        return h_i, h_j, z_i, z_j
+    def forward(self, x_i):
+        return self.model.inference(x_i)
 
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
         (x_i, x_j), _ = batch
 
-        h_i, h_j, z_i, z_j = self.forward(x_i, x_j)
+        h_i, h_j, z_i, z_j = self.model(x_i, x_j)
 
         loss = self.criterion(z_i, z_j)
         self.log('train_loss', loss, on_epoch=True, on_step=True)

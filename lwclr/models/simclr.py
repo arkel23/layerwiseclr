@@ -1,4 +1,5 @@
 # https://github.com/Spijkervet/SimCLR/blob/04bcf2baa1fb5631a0a636825aabe469865ad8a9/simclr/simclr.py#L8
+# https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/models/self_supervised/simclr/simclr_module.py#L128
 import torch.nn as nn
 
 class SimCLR(nn.Module):
@@ -8,11 +9,15 @@ class SimCLR(nn.Module):
         self.encoder = encoder
 
         # We use a MLP with one hidden layer to obtain z_i = g(h_i) = W(2)σ(W(1)h_i) where σ is a GELU non-linearity.
+        # Original one used a ReLU. Changed to GeLU. PL implmementation also adds BN layer.
         self.projector = nn.Sequential(
             nn.Linear(n_features, n_features, bias=False),
             nn.GELU(),
             nn.Linear(n_features, projection_dim, bias=False),
         )
+
+    def inference(self, x_i):
+        return self.encoder(x_i)[:, 0]
 
     def forward(self, x_i, x_j):
         h_i = self.encoder(x_i)
