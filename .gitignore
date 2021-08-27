@@ -3,9 +3,9 @@
 *.zip
 
 # scripts
-!setup.sh
 *.sh
 *.bat
+!setup.sh
 
 # logs, results, txt files
 *.log
