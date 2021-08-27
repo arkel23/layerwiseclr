@@ -9,8 +9,6 @@ from .custom_losses import NT_XentSimCLR
 from .scheduler import WarmupCosineSchedule
 
 NO_AUGS = 2
-PROJECTION_LAYERS = 2
-PL_WEIGHT = 0.1    
 
 class PLClassificationHead(nn.Module):
     def __init__(self, n_layers, n_features, n_classes, hidden_size):
@@ -44,7 +42,7 @@ class LitLWPLCLR(pl.LightningModule):
 
         self.criterion_contrastive = NT_XentSimCLR(temp=args.temperature)
         
-        self.pl_class_head = PLClassificationHead(n_layers=PROJECTION_LAYERS, 
+        self.pl_class_head = PLClassificationHead(n_layers=args.projection_layers, 
             n_features=self.n_features, n_classes=args.batch_size,
             hidden_size=self.representation_size)
 
@@ -70,7 +68,7 @@ class LitLWPLCLR(pl.LightningModule):
         logits = self.pl_class_head(h_i, h_j)
         loss_pseudosupervised = self.criterion_pseudosupervised(logits, pseudolabels)
         
-        loss = loss_contrastive + PL_WEIGHT * loss_pseudosupervised
+        loss = (self.args.cont_weight * loss_contrastive) + (self.args.pl_weight * loss_pseudosupervised)
         return loss
 
     def training_step(self, batch, batch_idx):

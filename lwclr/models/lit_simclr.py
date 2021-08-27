@@ -66,3 +66,53 @@ class LitSimCLR(pl.LightningModule):
         
         return [optimizer], [scheduler]
     
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+
+        parser.add_argument('--temperature', type=float, default=0.5,
+                        help='temperature parameter for ntxent loss')        
+
+        parser.add_argument('--optimizer', choices=['sgd', 'adam'], default='adam')
+        parser.add_argument('--learning_rate', default=3e-4, type=float,
+                        help='Initial learning rate.')  
+        parser.add_argument('--weight_decay', type=float, default=0.0)
+        parser.add_argument('--warmup_steps', type=int, default=1000, help='Warmup steps for LR scheduler.')
+        parser.add_argument('--warmup_epochs', type=int, default=0,
+                        help='If doing warmup in terms of epochs instead of steps.')
+
+        parser.add_argument('--model_name', 
+                        choices=['B_16', 'B_32', 'L_16', 'L_32'], 
+                        default='B_16', help='Which model architecture to use')
+        
+        parser.add_argument('--projection_layers', type=int, choices=[1, 2, 3], default=2,
+                            help='Number of layers for projection head.')
+        parser.add_argument('--layer_pair_1', type=int, default=0, 
+                        help='Layer features for pairs')
+        parser.add_argument('--layer_pair_2', type=int, default=-1, 
+                        help='Layer features for pairs')
+
+        parser.add_argument('--fs_weight', type=float, default=1, 
+                        help='Weight for fully supervised loss')
+        parser.add_argument('--pl_weight', type=float, default=1, 
+                        help='Wegith for layer-wise pseudolabels loss')
+        parser.add_argument('--cont_weight', type=float, default=1, 
+                        help='Weight for contrastive loss')
+
+        parser.add_argument('--pretrained_checkpoint',action='store_true',
+                        help='Loads pretrained model if available')
+        parser.add_argument('--checkpoint_path', type=str, default=None)     
+        parser.add_argument('--transfer_learning', action='store_true',
+                        help='Load partial state dict for transfer learning'
+                            'Resets the [embeddings, logits and] fc layer for ViT')    
+        parser.add_argument('--load_partial_mode', choices=['full_tokenizer', 'patchprojection', 
+                            'posembeddings', 'clstoken', 'patchandposembeddings', 
+                            'patchandclstoken', 'posembeddingsandclstoken', None], default=None,
+                        help='Load pre-processing components to speed up training')
+
+        parser.add_argument('--interm_features_fc', action='store_true', 
+                        help='If use this flag creates FC using intermediate features instead of only last layer.')
+        parser.add_argument('--conv_patching', action='store_true', 
+                        help='If use this flag uses a small convolutional stem instead of single large-stride convolution for patch projection.')
+        
+        return parser

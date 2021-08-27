@@ -36,7 +36,7 @@ def ret_args(ret_parser=False):
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Batch size for train/val/test.')
     
-    parser = models.LitSimLWCLR.add_model_specific_args(parser)
+    parser = models.LitSimCLR.add_model_specific_args(parser)
     
     parser = pl.Trainer.add_argparse_args(parser)
     parser.set_defaults(gpus=1, max_epochs=2, gradient_clip_val=1.0)
