@@ -13,7 +13,8 @@ def ret_args(ret_parser=False):
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--mode', type=str, choices=['simclr', 'simlwclr', 'linear_eval', 'fine_tuning'],
+    parser.add_argument('--mode', type=str, 
+                        choices=['simclr', 'simlwclr', 'lwplclr', 'linear_eval', 'fine_tuning'],
                         default='simlwclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
@@ -101,6 +102,8 @@ def load_plmodel(args):
         model = models.LitSimLWCLR(args)
     elif args.mode == 'simclr':
         model = models.LitSimCLR(args)
+    elif args.mode == 'lwplclr':
+        model = models.LitLWPLCLR(args)
     elif args.mode == 'linear_eval' or args.mode == 'fine_tuning':
         model = models.LitEvaluator(args)
     return model

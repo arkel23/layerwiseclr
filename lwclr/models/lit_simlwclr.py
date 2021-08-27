@@ -5,8 +5,8 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 from .model_selection import load_model
-from .scheduler import WarmupCosineSchedule
 from .custom_losses import NT_XentSimCLR
+from .scheduler import WarmupCosineSchedule
 
 class SimLWCLR(nn.Module):
     def __init__(self, encoder, projection_dim, n_features, layers_contrast=[0, -1]):
@@ -41,7 +41,7 @@ class LitSimLWCLR(pl.LightningModule):
         super().__init__()
         self.args = args
 
-        self.backbone = load_model(args)                
+        self.backbone = load_model(args, ret_interm_repr=True)                
         
         self.n_features = self.backbone.configuration.hidden_size
         self.representation_size = self.backbone.configuration.representation_size
@@ -52,7 +52,7 @@ class LitSimLWCLR(pl.LightningModule):
             projection_dim=self.backbone.configuration.representation_size,
             n_features=self.n_features, layers_contrast=self.layers_contrast)
 
-        self.criterion = NT_XentSimCLR(temperature=args.temperature)
+        self.criterion = NT_XentSimCLR(temp=args.temperature)
         
     def forward(self, x):
         # return last layer cls token features

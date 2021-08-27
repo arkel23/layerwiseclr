@@ -7,7 +7,7 @@ import torch.distributed as dist
 from .gather import GatherLayer, SyncFunction
 
 
-def nt_xent_loss(out_1, out_2, temperature, eps=1e-6):
+def nt_xent_loss(out_1, out_2, temp, eps=1e-6):
     """
         assume out_1 and out_2 are normalized
         out_1: [batch_size, dim]
@@ -31,15 +31,15 @@ def nt_xent_loss(out_1, out_2, temperature, eps=1e-6):
     # cov and sim: [2 * batch_size, 2 * batch_size * world_size]
     # neg: [2 * batch_size]
     cov = torch.mm(out, out_dist.t().contiguous())
-    sim = torch.exp(cov / temperature)
+    sim = torch.exp(cov / temp)
     neg = sim.sum(dim=-1)
 
     # from each row, subtract e^(1/temp) to remove similarity measure for x1.x1
-    row_sub = torch.Tensor(neg.shape).fill_(math.e ** (1 / temperature)).to(neg.device)
+    row_sub = torch.Tensor(neg.shape).fill_(math.e ** (1 / temp)).to(neg.device)
     neg = torch.clamp(neg - row_sub, min=eps)  # clamp for numerical stability
 
     # Positive similarity, pos becomes [2 * batch_size]
-    pos = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temperature)
+    pos = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temp)
     pos = torch.cat([pos, pos], dim=0)
 
     loss = -torch.log(pos / (neg + eps)).mean()
@@ -48,9 +48,9 @@ def nt_xent_loss(out_1, out_2, temperature, eps=1e-6):
 
 
 class NT_XentSimCLR(nn.Module):
-    def __init__(self, temperature): #batch_size, world_size):
+    def __init__(self, temp): #batch_size, world_size):
         super(NT_XentSimCLR, self).__init__()
-        self.temperature = temperature
+        self.temp = temp
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
         self.similarity_f = nn.CosineSimilarity(dim=2)
 
@@ -79,7 +79,7 @@ class NT_XentSimCLR(nn.Module):
         if dist.is_available() and dist.is_initialized():
             z = torch.cat(GatherLayer.apply(z), dim=0)
 
-        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temp
 
         sim_i_j = torch.diag(sim, batch_size * world_size)
         sim_j_i = torch.diag(sim, -batch_size * world_size)

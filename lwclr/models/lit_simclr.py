@@ -1,12 +1,12 @@
 # https://github.com/Spijkervet/SimCLR/blob/master/main_pl.py
-# https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/models/self_supervised/simclr/simclr_module.py
 import torch
+import torch.nn as nn
 import pytorch_lightning as pl
 
-from .model_selection import load_model
-from .scheduler import WarmupCosineSchedule
 from .simclr import SimCLR
+from .model_selection import load_model
 from .custom_losses import NT_XentSimCLR
+from .scheduler import WarmupCosineSchedule
 
 class LitSimCLR(pl.LightningModule):
     def __init__(self, args):
@@ -20,9 +20,9 @@ class LitSimCLR(pl.LightningModule):
         
         self.model = SimCLR(self.backbone, 
             projection_dim=self.backbone.configuration.representation_size,
-            n_features=self.n_features)
+            n_features=self.n_features, ret_interm_repr=False)
 
-        self.criterion = NT_XentSimCLR(temperature=args.temperature)
+        self.criterion = NT_XentSimCLR(temp=args.temperature)
         
     def forward(self, x_i):
         return self.model.inference(x_i)

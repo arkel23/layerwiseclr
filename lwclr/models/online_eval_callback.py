@@ -48,7 +48,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
 
     def on_pretrain_routine_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         pl_module.linear_evaluator = LinearHead(
-            n_input=self.z_dim,
+            n_features=self.z_dim,
             n_classes=self.num_classes,
         ).to(pl_module.device)
 
@@ -62,7 +62,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
     def to_device(self, batch: Sequence, device: Union[str, device]) -> Tuple[Tensor, Tensor]:
         inputs, y = batch
 
-        if self.mode == 'simclr':
+        if self.mode == 'simclr' or self.mode == 'lwplclr':
             x = inputs[0]
             x = x.to(device)
             y = y.to(device)

@@ -1,9 +1,11 @@
 import torch 
 import torch.nn as nn
+import torchvision.models as models
 
 import einops
 from einops.layers.torch import Rearrange
 
+from efficientnet_pytorch import EfficientNet
 from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 
 def load_model(args, ret_interm_repr=True):
@@ -66,3 +68,81 @@ class VisionTransformer(nn.Module):
             _, interm_features = self.model(images, mask)
             return interm_features
         return self.model(images, mask)
+
+
+class ResNet(nn.Module):
+    def __init__(self, args, ret_interm_repr):
+        super(ResNet, self).__init__()
+        
+        if args.model_name == 'resnet18':
+            base_model = models.resnet18(pretrained=args.pretrained, progress=True)
+        elif args.model_name == 'resnet50':
+            base_model = models.resnet50(pretrained=args.pretrained, progress=True) 
+        elif args.model_name == 'resnet152':
+            base_model = models.resnet152(pretrained=args.pretrained, progress=True)
+        self.model = base_model
+
+        # Initialize/freeze weights
+        # originally for pretrained would freeze all layers except last
+        #if args.pretrained:
+        #    freeze_layers(self.model)
+        #else:
+        if not args.pretrained:
+            self.init_weights()
+        
+        # Classifier head
+        num_features = self.model.fc.in_features
+        self.model.fc = nn.Linear(num_features, args.num_classes)
+
+    @torch.no_grad()
+    def init_weights(self):
+        def _init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+            
+        self.apply(_init)
+        nn.init.constant_(self.model.fc.weight, 0)
+        nn.init.constant_(self.model.fc.bias, 0)
+        
+    def forward(self, x):
+        out = self.model(x)
+        return out
+
+
+class EffNet(nn.Module):
+    def __init__(self, args, ret_interm_repr):
+        super(EffNet, self).__init__()
+        
+        if args.pretrained:
+            self.model = EfficientNet.from_pretrained('efficientnet-b0')
+        else:
+            self.model = EfficientNet.from_name('efficientnet-b0')
+
+        if not args.pretrained:
+            self.init_weights()
+        
+        # Classifier head
+        num_features = self.model._fc.in_features
+        self.model._fc = nn.Linear(num_features, args.num_classes)
+
+        self.ret_interm_repr = ret_interm_repr
+
+    @torch.no_grad()
+    def init_weights(self):
+        def _init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+            
+        self.apply(_init)
+        nn.init.constant_(self.model._fc.weight, 0)
+        nn.init.constant_(self.model._fc.bias, 0)
+        
+    def forward(self, x):
+        if self.ret_interm_repr:
+            return self.model.extract_endpoints(img)
+        return self.model.extract_features(x)
+
