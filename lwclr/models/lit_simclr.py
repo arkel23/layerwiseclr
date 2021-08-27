@@ -1,4 +1,5 @@
 # https://github.com/Spijkervet/SimCLR/blob/master/main_pl.py
+from argparse import ArgumentParser
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
