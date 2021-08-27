@@ -3,6 +3,7 @@
 *.zip
 
 # scripts
+!setup.sh
 *.sh
 *.bat
 
