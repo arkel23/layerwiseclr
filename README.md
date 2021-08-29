@@ -12,40 +12,34 @@ Train a SimCLR model on CIFAR10, image size=128, batch size=128, for 300 epochs 
 python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode simclr --batch_size 128 --save_checkpoint_freq 50
 ```
 
-Train a SimLWCLR model with batch size=256, with the first (0) and last (-1) layer for positive pairs and all previous settings:
+Train a LWCLR twin model with full supervision with batch size=128, with contrast between the last layer of both models and all previous settings:
 ```
-python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode simlwclr --batch_size 256 --save_checkpoint_freq 50 --layer_pair_1 0 --layer_pair_2 -1
+train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_full_single --batch_size 128 --save_checkpoint_freq 50
+```
 
+Train a LWCLR twin model with SimCLR contrastive supervision for auxiliary model with batch size=64, with contrast between the last layer of both models and all previous settings:
 ```
-
-Train a LWPLCLR (LayerWise PseudoLabels CLR) model:
-```
-python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwplclr --batch_size 64 --save_checkpoint_freq 50
+train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_cont_single --batch_size 64 --save_checkpoint_freq 50
 ```
 
 ## Description of models
 ### SimCLR
 Takes two augmentations from same image for positive pairs, and other images in batch for negative pairs.
 
-### SimLWCLR
-Takes two different layer representations from same image for positive pairs, and other images in batch for negative pairs.
-
-### LWPLCLR
-Same as SimCLR, but additionally generates pseudolabels for each image in batch (image 0 gets label 0, image n gets label n),
-and also gives the same pseudolabel to each layer-wise representation of the image, and similarly for the other augmentation 
-of the same image. Then concatenates all these representations and images across the batch dimension, and passes them through
-a MLP classification head to predict which image is this representation from.
+### LWCLR
+Trains two models, each with their independent weights, but same architecture, one called auxiliary or generator, and the other called discriminator. Auxiliary is trained either using full supervision or contrastive similar to SimCLR, and it provides representations from either the last layer or from any intermediate layer, to contrast against the discriminator, which learns through a contrastive loss from its feature map from the last layer of either the same image, or a different augmentation of the same image.
 
 ## Full list of arguments
 ```
-usage: train.py [-h] [--mode {simclr,simlwclr,lwplclr,linear_eval,fine_tuning}] [--seed SEED] [--no_cpu_workers NO_CPU_WORKERS]
-                [--results_dir RESULTS_DIR] [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ] [--dataset_name {cifar10,cifar100,imagenet}]
+usage: train.py [-h] [--mode {simclr,lwclr_full_all,lwclr_full_single,lwclr_cont_all,lwclr_cont_single,linear_eval,fine_tuning}]
+                [--seed SEED] [--no_cpu_workers NO_CPU_WORKERS] [--results_dir RESULTS_DIR]
+                [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ] [--dataset_name {cifar10,cifar100,imagenet}]
                 [--dataset_path DATASET_PATH] [--deit_recipe] [--image_size IMAGE_SIZE] [--batch_size BATCH_SIZE]
                 [--temperature TEMPERATURE] [--optimizer {sgd,adam}] [--learning_rate LEARNING_RATE] [--weight_decay WEIGHT_DECAY]
-                [--warmup_steps WARMUP_STEPS] [--warmup_epochs WARMUP_EPOCHS] [--model_name {B_16,B_32,L_16,L_32}]
-                [--projection_layers {1,2,3}] [--layer_pair_1 LAYER_PAIR_1] [--layer_pair_2 LAYER_PAIR_2] [--fs_weight FS_WEIGHT]
-                [--pl_weight PL_WEIGHT] [--cont_weight CONT_WEIGHT] [--pretrained_checkpoint] [--checkpoint_path CHECKPOINT_PATH]
-                [--transfer_learning]
+                [--warmup_steps WARMUP_STEPS] [--warmup_epochs WARMUP_EPOCHS]
+                [--model_name {B_16,B_32,L_16,L_32,effnet_b0,resnet18,resnet50}] [--vit_avg_pooling] [--no_proj_layers {1,2,3}]
+                [--layer_contrast LAYER_CONTRAST] [--random_layer_contrast] [--fs_weight FS_WEIGHT] [--pl_weight PL_WEIGHT]
+                [--cont_weight CONT_WEIGHT] [--pretrained_checkpoint] [--checkpoint_path CHECKPOINT_PATH] [--transfer_learning]
                 [--load_partial_mode {full_tokenizer,patchprojection,posembeddings,clstoken,patchandposembeddings,patchandclstoken,posembeddingsandclstoken,None}]
                 [--interm_features_fc] [--conv_patching] [--logger [LOGGER]] [--checkpoint_callback [CHECKPOINT_CALLBACK]]
                 [--default_root_dir DEFAULT_ROOT_DIR] [--gradient_clip_val GRADIENT_CLIP_VAL]
@@ -73,7 +67,7 @@ usage: train.py [-h] [--mode {simclr,simlwclr,lwplclr,linear_eval,fine_tuning}] 
 
 optional arguments:
   -h, --help            show this help message and exit
-  --mode {simclr,simlwclr,lwplclr,linear_eval,fine_tuning}
+  --mode {simclr,lwclr_full_all,lwclr_full_single,lwclr_cont_all,lwclr_cont_single,linear_eval,fine_tuning}
                         Framework for training and evaluation
   --seed SEED           random seed for initialization
   --no_cpu_workers NO_CPU_WORKERS
@@ -101,14 +95,15 @@ optional arguments:
                         Warmup steps for LR scheduler.
   --warmup_epochs WARMUP_EPOCHS
                         If doing warmup in terms of epochs instead of steps.
-  --model_name {B_16,B_32,L_16,L_32}
+  --model_name {B_16,B_32,L_16,L_32,effnet_b0,resnet18,resnet50}
                         Which model architecture to use
-  --projection_layers {1,2,3}
+  --vit_avg_pooling     If use this flag then uses average pooling instead of cls token of ViT
+  --no_proj_layers {1,2,3}
                         Number of layers for projection head.
-  --layer_pair_1 LAYER_PAIR_1
+  --layer_contrast LAYER_CONTRAST
                         Layer features for pairs
-  --layer_pair_2 LAYER_PAIR_2
-                        Layer features for pairs
+  --random_layer_contrast
+                        If use this flag then at each step chooses a random layer from gen to contrast against
   --fs_weight FS_WEIGHT
                         Weight for fully supervised loss
   --pl_weight PL_WEIGHT
@@ -237,12 +232,12 @@ pl.Trainer:
                         faster convergence. trainer.tune() method will set the suggested learning rate in self.lr or self.learning_rate
                         in the LightningModule. To use a different key set a string instead of True with the key name.
   --replace_sampler_ddp [REPLACE_SAMPLER_DDP]
-                        Explicitly enables or disables sampler replacement. If not specified this will toggled automatically when DDP is
-                        used. By default it will add ``shuffle=True`` for train sampler and ``shuffle=False`` for val/test sampler. If
-                        you want to customize it, you can set ``replace_sampler_ddp=False`` and add your own distributed sampler.
+                        Explicitly enables or disables sampler replacement. If not specified this will toggled automatically when DDP
+                        is used. By default it will add ``shuffle=True`` for train sampler and ``shuffle=False`` for val/test sampler.
+                        If you want to customize it, you can set ``replace_sampler_ddp=False`` and add your own distributed sampler.
   --terminate_on_nan [TERMINATE_ON_NAN]
-                        If set to True, will terminate training (by raising a `ValueError`) at the end of each training batch, if any of
-                        the parameters or the loss are NaN or +/-inf.
+                        If set to True, will terminate training (by raising a `ValueError`) at the end of each training batch, if any
+                        of the parameters or the loss are NaN or +/-inf.
   --auto_scale_batch_size [AUTO_SCALE_BATCH_SIZE]
                         If set to True, will `initially` run a batch size finder trying to find the largest batch size that fits into
                         memory. The result will be stored in self.batch_size in the LightningModule. Additionally, can be set to either
@@ -265,6 +260,6 @@ pl.Trainer:
                         one epoch when the largest dataset is traversed, and smaller datasets reload when running out of their data. In
                         'min_size' mode, all the datasets reload when reaching the minimum length of datasets.
   --stochastic_weight_avg [STOCHASTIC_WEIGHT_AVG]
-                        Whether to use `Stochastic Weight Averaging (SWA) <https://pytorch.org/blog/pytorch-1.6-now-includes-stochastic-
-                        weight-averaging/>_`
+                        Whether to use `Stochastic Weight Averaging (SWA) <https://pytorch.org/blog/pytorch-1.6-now-includes-
+                        stochastic-weight-averaging/>_`
 ```

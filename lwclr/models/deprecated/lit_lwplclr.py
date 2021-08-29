@@ -11,11 +11,11 @@ from .scheduler import WarmupCosineSchedule
 NO_AUGS = 2
 
 class PLClassificationHead(nn.Module):
-    def __init__(self, n_layers, n_features, n_classes, hidden_size):
+    def __init__(self, no_layers, in_features, out_features, hidden_size):
         super().__init__()
         
         self.projection_class_head = ProjectionHead( 
-                n_layers=n_layers, n_features=n_features, n_classes=n_classes, 
+                no_layers=no_layers, in_features=in_features, out_features=out_features, 
                 hidden_size=hidden_size)
         
     def forward(self, interm_features_i, interm_features_j):
@@ -33,17 +33,17 @@ class LitLWPLCLR(pl.LightningModule):
         
         self.backbone = load_model(args, ret_interm_repr=True)                
         
-        self.n_features = self.backbone.configuration.hidden_size
+        self.in_features = self.backbone.configuration.hidden_size
         self.representation_size = self.backbone.configuration.representation_size
         
         self.model = SimCLR(self.backbone, 
-            projection_dim=self.backbone.configuration.representation_size,
-            n_features=self.n_features, ret_interm_repr=True)
+            out_features=self.backbone.configuration.representation_size,
+            in_features=self.in_features, ret_interm_repr=True)
 
         self.criterion_contrastive = NT_XentSimCLR(temp=args.temperature)
         
-        self.pl_class_head = PLClassificationHead(n_layers=args.projection_layers, 
-            n_features=self.n_features, n_classes=args.batch_size,
+        self.pl_class_head = PLClassificationHead(no_layers=args.no_proj_layers, 
+            in_features=self.in_features, out_features=args.batch_size,
             hidden_size=self.representation_size)
 
         self.criterion_pseudosupervised = nn.CrossEntropyLoss()

@@ -14,7 +14,8 @@ def ret_args(ret_parser=False):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, 
-                        choices=['simclr', 'simlwclr', 'lwplclr', 'linear_eval', 'fine_tuning'],
+                        choices=['simclr', 'lwclr_full_all', 'lwclr_full_single', 
+                            'lwclr_cont_all', 'lwclr_cont_single', 'linear_eval', 'fine_tuning'],
                         default='simlwclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
@@ -98,12 +99,12 @@ def load_trainer(args, model, wandb_logger):
 
 
 def load_plmodel(args):
-    if args.mode == 'simlwclr':
-        model = models.LitSimLWCLR(args)
-    elif args.mode == 'simclr':
+    if args.mode == 'simclr':
         model = models.LitSimCLR(args)
-    elif args.mode == 'lwplclr':
-        model = models.LitLWPLCLR(args)
+    elif args.mode in ['lwclr_full_all', 'lwclr_full_single']:
+        model = models.LitLWCLRFull(args)
+    elif args.mode in ['lwclr_cont_all', 'lwclr_cont_single']:
+        model = models.LitLWCLRCont(args)
     elif args.mode == 'linear_eval' or args.mode == 'fine_tuning':
         model = models.LitEvaluator(args)
     return model

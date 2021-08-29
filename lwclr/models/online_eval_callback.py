@@ -10,7 +10,7 @@ from torch.nn import functional as F
 from torch.optim import Optimizer
 from torchmetrics.functional import accuracy
 
-from .heads import LinearHead
+from .heads import ProjectionHead
 
 class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
     """Attaches a MLP for fine-tuning using the standard self-supervised protocol.
@@ -47,9 +47,8 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         self.lr = lr
 
     def on_pretrain_routine_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        pl_module.linear_evaluator = LinearHead(
-            n_features=self.z_dim,
-            n_classes=self.num_classes,
+        pl_module.linear_evaluator = ProjectionHead(
+            no_layers=1, in_features=self.z_dim, out_features=self.num_classes,
         ).to(pl_module.device)
 
         self.optimizer = torch.optim.Adam(pl_module.linear_evaluator.parameters(), lr=self.lr)
@@ -62,7 +61,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
     def to_device(self, batch: Sequence, device: Union[str, device]) -> Tuple[Tensor, Tensor]:
         inputs, y = batch
 
-        if self.mode == 'simclr' or self.mode == 'lwplclr':
+        if self.mode in ['simclr', 'lwclr_cont_full', 'lwclr_cont_single']:
             x = inputs[0]
             x = x.to(device)
             y = y.to(device)

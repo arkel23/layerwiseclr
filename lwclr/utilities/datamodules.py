@@ -90,7 +90,7 @@ class ApplyTransform:
 
         if args.deit_recipe:
             self.mode = 'deit_recipe'
-        elif args.mode == 'simclr' or 'lwplclr':
+        elif args.mode in ['simclr', 'lwclr_cont_full', 'lwclr_cont_single']:
             self.mode = 'simclr'
         else:
             self.mode = 'default'

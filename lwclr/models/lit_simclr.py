@@ -1,13 +1,45 @@
 # https://github.com/Spijkervet/SimCLR/blob/master/main_pl.py
+# https://github.com/Spijkervet/SimCLR/blob/04bcf2baa1fb5631a0a636825aabe469865ad8a9/simclr/simclr.py#L8
+# https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/models/self_supervised/simclr/simclr_module.py
 from argparse import ArgumentParser
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
-from .simclr import SimCLR
+from .heads import ProjectionHead
 from .model_selection import load_model
 from .custom_losses import NT_XentSimCLR
 from .scheduler import WarmupCosineSchedule
+
+class SimCLR(nn.Module):
+    def __init__(self, encoder, 
+                 in_features: int, out_features: int, 
+                 hidden_size: int, no_layers: int = 2, 
+                 ret_interm_repr: bool = False, layers_contrast=[-1, -1]):
+        super(SimCLR, self).__init__()
+
+        self.encoder = encoder
+
+        self.projector = ProjectionHead(no_layers=no_layers, in_features=in_features, 
+                            out_features=out_features, hidden_size=hidden_size)
+
+        self.ret_interm_repr = ret_interm_repr
+        self.layers_contrast = layers_contrast
+
+    def forward(self, x_i, x_j):
+        h_i = self.encoder(x_i)
+        h_j = self.encoder(x_j)
+        
+        # use cls token for projection
+        if not self.ret_interm_repr:
+            z_i = self.projector(h_i)
+            z_j = self.projector(h_j)
+        else:
+            # if using layerwise repr. choose which layer repr. to use
+            z_i = self.projector(h_i[self.layers_contrast[0]])
+            z_j = self.projector(h_j[self.layers_contrast[1]])
+        return h_i, h_j, z_i, z_j
+
 
 class LitSimCLR(pl.LightningModule):
     def __init__(self, args):
@@ -16,21 +48,23 @@ class LitSimCLR(pl.LightningModule):
 
         self.backbone = load_model(args, ret_interm_repr=False)                
         
-        self.n_features = self.backbone.configuration.hidden_size
-        self.representation_size = self.backbone.configuration.representation_size
+        in_features = self.backbone.configuration.hidden_size
+        repr_size = self.backbone.configuration.representation_size
         
         self.model = SimCLR(self.backbone, 
-            projection_dim=self.backbone.configuration.representation_size,
-            n_features=self.n_features, ret_interm_repr=False)
+            no_layers=args.no_proj_layers, in_features=in_features, 
+            out_features=repr_size, hidden_size=repr_size)
 
         self.criterion = NT_XentSimCLR(temp=args.temperature)
         
     def forward(self, x_i):
-        return self.model.inference(x_i)
-
+        if not self.args.ret_interm_repr:
+            return self.backbone(x_i)
+        return self.backbone(x_i)[-1]
+        
     def shared_step(self, batch):
         (x_i, x_j), _ = batch
-        h_i, h_j, z_i, z_j = self.model(x_i, x_j)
+        _, _, z_i, z_j = self.model(x_i, x_j)
         loss = self.criterion(z_i, z_j)
         return loss
 
@@ -83,16 +117,19 @@ class LitSimCLR(pl.LightningModule):
                         help='If doing warmup in terms of epochs instead of steps.')
 
         parser.add_argument('--model_name', 
-                        choices=['B_16', 'B_32', 'L_16', 'L_32'], 
+                        choices=['B_16', 'B_32', 'L_16', 'L_32', 
+                                 'effnet_b0', 'resnet18', 'resnet50'], 
                         default='B_16', help='Which model architecture to use')
+        parser.add_argument('--vit_avg_pooling', action='store_true',
+                            help='If use this flag then uses average pooling instead of cls token of ViT')
         
-        parser.add_argument('--projection_layers', type=int, choices=[1, 2, 3], default=2,
+        parser.add_argument('--no_proj_layers', type=int, choices=[1, 2, 3], default=2,
                             help='Number of layers for projection head.')
-        parser.add_argument('--layer_pair_1', type=int, default=0, 
+        parser.add_argument('--layer_contrast', type=int, default=-1, 
                         help='Layer features for pairs')
-        parser.add_argument('--layer_pair_2', type=int, default=-1, 
-                        help='Layer features for pairs')
-
+        parser.add_argument('--random_layer_contrast', action='store_true',
+                            help='If use this flag then at each step chooses a random layer from gen to contrast against')
+        
         parser.add_argument('--fs_weight', type=float, default=1, 
                         help='Weight for fully supervised loss')
         parser.add_argument('--pl_weight', type=float, default=1, 

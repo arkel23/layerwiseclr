@@ -5,9 +5,9 @@ from torch.nn import functional as F
 import  pytorch_lightning as pl
 from torchmetrics.functional import accuracy
 
+from .heads import ProjectionHead
 from .model_selection import load_model
 from .scheduler import WarmupCosineSchedule
-from .heads import LinearHead
 
 def freeze_layers(model):
     for param in model.parameters():
@@ -28,13 +28,11 @@ class LitEvaluator(pl.LightningModule):
         if args.mode == 'linear_eval':
             freeze_layers(self.backbone)               
         
-        self.n_features = self.backbone.configuration.hidden_size
-        self.num_classes = self.backbone.configuration.num_classes
+        in_features = self.backbone.configuration.hidden_size
+        num_classes = self.backbone.configuration.num_classes
         
-        self.linear_head =  LinearHead(
-            n_input=self.n_features,
-            n_classes=self.num_classes,
-        )
+        self.linear_head =  ProjectionHead(
+            no_layers=1, in_features=in_features, out_features=num_classes)
 
     def forward(self, x):
         return self.linear_head(self.backbone(x)[:, 0])

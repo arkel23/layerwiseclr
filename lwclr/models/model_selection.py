@@ -1,18 +1,23 @@
+from collections import namedtuple
 import torch 
 import torch.nn as nn
-import torchvision.models as models
-
 import einops
 from einops.layers.torch import Rearrange
 
+import timm
 from efficientnet_pytorch import EfficientNet
 from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 
-def load_model(args, ret_interm_repr=True):
-    # initiates model and loss     
-    model = VisionTransformer(args, ret_interm_repr=ret_interm_repr)
+def load_model(args, ret_interm_repr=True, pretrained=True):
+    # initiates model and loss
+    if args.model_name == 'effnet_b0':
+        model = EfficientNet(args, ret_interm_repr=ret_interm_repr)
+    elif 'resnet' in args.model_name:
+        model = ResNet(args, ret_interm_repr=ret_interm_repr)
+    else:
+        model = VisionTransformer(args, ret_interm_repr=ret_interm_repr)
     
-    if args.checkpoint_path:
+    if args.checkpoint_path and pretrained:
         if args.load_partial_mode:
             model.model.load_partial(weights_path=args.checkpoint_path, 
                 pretrained_image_size=model.configuration.pretrained_image_size, 
@@ -52,82 +57,67 @@ class VisionTransformer(nn.Module):
     def __init__(self, args, ret_interm_repr=True):
         super(VisionTransformer, self).__init__()
         
+        self.ret_interm_repr = ret_interm_repr
+        
         def_config = PRETRAINED_CONFIGS['{}'.format(args.model_name)]['config']
         self.configuration = ViTConfigExtended(**def_config)
-        self.configuration.num_classes = args.num_classes
         self.configuration.image_size = args.image_size
-
-        self.ret_interm_repr = ret_interm_repr
+        self.configuration.num_classes = args.num_classes
         
         self.model = ViT(self.configuration, name=args.model_name, 
             pretrained=args.pretrained_checkpoint, conv_patching=args.conv_patching, 
             ret_interm_repr=ret_interm_repr, load_fc_layer=False)
-
+        
+        if args.vit_avg_pooling:
+            self.pool = nn.Sequential(
+                Rearrange('b s d -> b d s'),
+                nn.AdaptiveAvgPool1d(1),
+                Rearrange('b d 1 -> b d')
+            )
+        
     def forward(self, images, mask=None):
         if self.ret_interm_repr:
             _, interm_features = self.model(images, mask)
-            return interm_features
-        return self.model(images, mask)
-
-
-class ResNet(nn.Module):
-    def __init__(self, args, ret_interm_repr):
-        super(ResNet, self).__init__()
-        
-        if args.model_name == 'resnet18':
-            base_model = models.resnet18(pretrained=args.pretrained, progress=True)
-        elif args.model_name == 'resnet50':
-            base_model = models.resnet50(pretrained=args.pretrained, progress=True) 
-        elif args.model_name == 'resnet152':
-            base_model = models.resnet152(pretrained=args.pretrained, progress=True)
-        self.model = base_model
-
-        # Initialize/freeze weights
-        # originally for pretrained would freeze all layers except last
-        #if args.pretrained:
-        #    freeze_layers(self.model)
-        #else:
-        if not args.pretrained:
-            self.init_weights()
-        
-        # Classifier head
-        num_features = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_features, args.num_classes)
-
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
-        nn.init.constant_(self.model.fc.weight, 0)
-        nn.init.constant_(self.model.fc.bias, 0)
-        
-    def forward(self, x):
-        out = self.model(x)
-        return out
-
+            if hasattr(self, 'pool'):
+                return [self.pool(features) for features in interm_features]
+            return [features[:, 0] for features in interm_features]
+        if hasattr(self, 'pool'):
+            return self.pool(self.model(images, mask))
+        return self.model(images, mask)[:, 0]
 
 class EffNet(nn.Module):
-    def __init__(self, args, ret_interm_repr):
+    def __init__(self, args, ret_interm_repr=True):
         super(EffNet, self).__init__()
         
-        if args.pretrained:
+        self.ret_interm_repr = ret_interm_repr
+        
+        if args.pretrained_checkpoint:
             self.model = EfficientNet.from_pretrained('efficientnet-b0')
         else:
             self.model = EfficientNet.from_name('efficientnet-b0')
 
-        if not args.pretrained:
+        if not args.pretrained_checkpoint:
             self.init_weights()
         
-        # Classifier head
-        num_features = self.model._fc.in_features
-        self.model._fc = nn.Linear(num_features, args.num_classes)
-
-        self.ret_interm_repr = ret_interm_repr
+        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
+        final_dim = original_dimensions[-1]
+        
+        if self.ret_interm_repr:
+            self.reshaping_head = nn.ModuleList([
+                nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c'),
+                    nn.Linear(original_dim, final_dim)
+                ) 
+            for original_dim in original_dimensions])
+        else:
+            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c')
+            )
+        
+        Config = namedtuple('Config', ['hidden_size', 'representation_size', 'num_classes', 'num_hidden_layers'])
+        self.configuration = Config(hidden_size=final_dim, representation_size=final_dim, 
+                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
 
     @torch.no_grad()
     def init_weights(self):
@@ -140,9 +130,73 @@ class EffNet(nn.Module):
         self.apply(_init)
         nn.init.constant_(self.model._fc.weight, 0)
         nn.init.constant_(self.model._fc.bias, 0)
+    
+    def get_reduction_dims(self, image_size):
+        img = torch.rand(1, 3, image_size, image_size)
+        features = self.model.extract_endpoints(img)
+        dims = [layer_output.size(1) for layer_output in features.values()]
+        return dims
         
     def forward(self, x):
         if self.ret_interm_repr:
-            return self.model.extract_endpoints(img)
-        return self.model.extract_features(x)
+            interm_features = self.model.extract_endpoints(x).values()
+            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
+        return self.reshaping_head(self.model.extract_features(x))
+
+
+class ResNet(nn.Module):
+    def __init__(self, args, ret_interm_repr=True):
+        super(ResNet, self).__init__()
+        
+        self.ret_interm_repr = ret_interm_repr
+        
+        self.model = timm.create_model('{}'.format(args.model_name), pretrained=args.pretrained_checkpoint, features_only=True)
+        
+        if not args.pretrained_checkpoint:
+            self.init_weights()
+        
+        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
+        final_dim = original_dimensions[-1]
+        
+        if self.ret_interm_repr:
+            self.reshaping_head = nn.ModuleList([
+                nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c'),
+                    nn.Linear(original_dim, final_dim)
+                ) 
+            for original_dim in original_dimensions])
+        else:
+            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c')
+            )
+        
+        Config = namedtuple('Config', ['hidden_size', 'representation_size', 'num_classes', 'num_hidden_layers'])
+        self.configuration = Config(hidden_size=final_dim, representation_size=final_dim, 
+                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
+         
+    @torch.no_grad()
+    def init_weights(self):
+        def _init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+            
+        self.apply(_init)
+        
+    def get_reduction_dims(self, image_size):
+        img = torch.rand(1, 3, image_size, image_size)
+        features = self.model(img)
+        dims = [layer_output.size(1) for layer_output in features]
+        return dims
+    
+    def forward(self, x):
+        if self.ret_interm_repr:
+            interm_features = self.model(x)
+            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
+        return self.reshaping_head(self.model(x)[-1])
+
+
+
 
