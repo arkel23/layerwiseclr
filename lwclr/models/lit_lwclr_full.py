@@ -57,8 +57,9 @@ class LitLWCLRFull(pl.LightningModule):
         # loss for lwclr network
         if self.args.mode == 'lwclr_full_single':
             if self.args.random_layer_contrast:
+                last_layer = self.backbone.configuration.num_hidden_layers - 1
                 features_aux = interm_features[
-                    random.randint(0, self.backbone.configuration.num_hidden_layers-1)].detach()
+                    random.randint(last_layer - self.args.cont_layers_range, last_layer)].detach()
             else:
                 features_aux = interm_features[self.args.layer_contrast].detach()
             loss = self.contrastive_head(features, features_aux)

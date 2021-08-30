@@ -129,6 +129,8 @@ class LitSimCLR(pl.LightningModule):
                         help='Layer features for pairs')
         parser.add_argument('--random_layer_contrast', action='store_true',
                             help='If use this flag then at each step chooses a random layer from gen to contrast against')
+        parser.add_argument('--cont_layers_range', type=int, default=3,
+                        help='Choose which last N layers to contrast from.')
         
         parser.add_argument('--fs_weight', type=float, default=1, 
                         help='Weight for fully supervised loss')

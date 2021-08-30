@@ -63,14 +63,15 @@ class LitLWCLRCont(pl.LightningModule):
         # loss for lwclr network
         if self.args.mode == 'lwclr_cont_single':
             if self.args.random_layer_contrast:
-                interm_features_cat = h_i + h_j
-                features_aux = interm_features_cat[
-                    random.randint(0, ((self.backbone.configuration.num_hidden_layers * 2)) - 1)
-                    ].detach()
+                last_layer = self.backbone.configuration.num_hidden_layers - 1
                 if random.randint(0, 1) == 0:
                     features = self.backbone(x_i)
+                    features_aux = h_j[
+                        random.randint(last_layer - self.args.cont_layers_range, last_layer)].detach()
                 else:
                     features = self.backbone(x_j)
+                    features_aux = h_i[
+                        random.randint(last_layer - self.args.cont_layers_range, last_layer)].detach()
             
             else:
                 if random.randint(0, 1) == 0:
