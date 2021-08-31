@@ -88,9 +88,7 @@ class ApplyTransform:
         self.split = split
         self.args = args
 
-        if args.deit_recipe:
-            self.mode = 'deit_recipe'
-        elif args.mode in ['simclr', 'lwclr_cont_full', 'lwclr_cont_single']:
+        if args.mode in ['simclr', 'lwclr_cont_full', 'lwclr_cont_single']:
             self.mode = 'simclr'
         else:
             self.mode = 'default'
@@ -104,7 +102,7 @@ class ApplyTransform:
             return self.transform(x)
 
     def build_transform(self):
-        if self.mode == 'deit_recipe':
+        if self.args.deit_recipe:
             transform = deit_transform(split=self.split, args=self.args)
         elif self.mode == 'simclr' and self.split == 'train':
             transform = simclr_transform(args=self.args)

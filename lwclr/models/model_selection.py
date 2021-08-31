@@ -8,16 +8,16 @@ import timm
 from efficientnet_pytorch import EfficientNet
 from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 
-def load_model(args, ret_interm_repr=True, pretrained=True):
+def load_model(args, ret_interm_repr=True, pretrained=False):
     # initiates model and loss
     if args.model_name == 'effnet_b0':
-        model = EfficientNet(args, ret_interm_repr=ret_interm_repr)
+        model = EfficientNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     elif 'resnet' in args.model_name:
-        model = ResNet(args, ret_interm_repr=ret_interm_repr)
+        model = ResNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     else:
-        model = VisionTransformer(args, ret_interm_repr=ret_interm_repr)
+        model = VisionTransformer(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     
-    if args.checkpoint_path and pretrained:
+    if args.checkpoint_path:
         if args.load_partial_mode:
             model.model.load_partial(weights_path=args.checkpoint_path, 
                 pretrained_image_size=model.configuration.pretrained_image_size, 
@@ -54,7 +54,7 @@ def load_model(args, ret_interm_repr=True, pretrained=True):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, args, ret_interm_repr=True):
+    def __init__(self, args, ret_interm_repr=True, pretrained=False):
         super(VisionTransformer, self).__init__()
         
         self.ret_interm_repr = ret_interm_repr
@@ -65,7 +65,7 @@ class VisionTransformer(nn.Module):
         self.configuration.num_classes = args.num_classes
         
         self.model = ViT(self.configuration, name=args.model_name, 
-            pretrained=args.pretrained_checkpoint, conv_patching=args.conv_patching, 
+            pretrained=pretrained, conv_patching=args.conv_patching, 
             ret_interm_repr=ret_interm_repr, load_fc_layer=False)
         
         if args.vit_avg_pooling:
@@ -86,17 +86,17 @@ class VisionTransformer(nn.Module):
         return self.model(images, mask)[:, 0]
 
 class EffNet(nn.Module):
-    def __init__(self, args, ret_interm_repr=True):
+    def __init__(self, args, ret_interm_repr=True, pretrained=False):
         super(EffNet, self).__init__()
         
         self.ret_interm_repr = ret_interm_repr
         
-        if args.pretrained_checkpoint:
+        if pretrained:
             self.model = EfficientNet.from_pretrained('efficientnet-b0')
         else:
             self.model = EfficientNet.from_name('efficientnet-b0')
 
-        if not args.pretrained_checkpoint:
+        if not pretrained:
             self.init_weights()
         
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)
@@ -145,14 +145,14 @@ class EffNet(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, args, ret_interm_repr=True):
+    def __init__(self, args, ret_interm_repr=True, pretrained=False):
         super(ResNet, self).__init__()
         
         self.ret_interm_repr = ret_interm_repr
         
-        self.model = timm.create_model('{}'.format(args.model_name), pretrained=args.pretrained_checkpoint, features_only=True)
+        self.model = timm.create_model('{}'.format(args.model_name), pretrained=pretrained, features_only=True)
         
-        if not args.pretrained_checkpoint:
+        if not pretrained:
             self.init_weights()
         
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)

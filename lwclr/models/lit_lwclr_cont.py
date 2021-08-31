@@ -34,7 +34,7 @@ class LitLWCLRCont(pl.LightningModule):
 
         # one model for giving/generating layer-wise views
         # another for receiving and evaluating them
-        self.backbone_aux = load_model(args, ret_interm_repr=True, pretrained=True)
+        self.backbone_aux = load_model(args, ret_interm_repr=True, pretrained=args.pretrained_aux)
         self.backbone = load_model(args, ret_interm_repr=False, pretrained=False)               
         
         in_features = self.backbone.configuration.hidden_size
@@ -64,24 +64,25 @@ class LitLWCLRCont(pl.LightningModule):
         if self.args.mode == 'lwclr_cont_single':
             if self.args.random_layer_contrast:
                 last_layer = self.backbone.configuration.num_hidden_layers - 1
-                if random.randint(0, 1) == 0:
-                    features = self.backbone(x_i)
-                    features_aux = h_j[
-                        random.randint(last_layer - self.args.cont_layers_range, last_layer)].detach()
-                else:
-                    features = self.backbone(x_j)
-                    features_aux = h_i[
-                        random.randint(last_layer - self.args.cont_layers_range, last_layer)].detach()
+                
+                features_i = self.backbone(x_i)
+                features_aux_j = h_j[random.randint(
+                    last_layer - self.args.cont_layers_range, last_layer)].detach()
+                
+                features_j = self.backbone(x_j)
+                features_aux_i = h_i[random.randint(
+                    last_layer - self.args.cont_layers_range, last_layer)].detach()
             
             else:
-                if random.randint(0, 1) == 0:
-                    features = self.backbone(x_i)
-                    features_aux = h_j[self.args.layer_contrast].detach()
-                else:
-                    features = self.backbone(x_j)
-                    features_aux = h_i[self.args.layer_contrast].detach()
+                features_i = self.backbone(x_i)
+                features_aux_j = h_j[self.args.layer_contrast].detach()
+                
+                features_j = self.backbone(x_j)
+                features_aux_i = h_i[self.args.layer_contrast].detach()
             
-            loss = self.contrastive_head(features, features_aux)
+            loss_ij = self.contrastive_head(features_i, features_aux_j)
+            loss_ji = self.contrastive_head(features_j, features_aux_i)
+            loss = loss_ij + loss_ji
         else:
             raise NotImplementedError    
         

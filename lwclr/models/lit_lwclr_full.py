@@ -28,7 +28,7 @@ class LitLWCLRFull(pl.LightningModule):
 
         # one model for giving/generating layer-wise views
         # another for receiving and evaluating them
-        self.backbone_aux = load_model(args, ret_interm_repr=True, pretrained=True)
+        self.backbone_aux = load_model(args, ret_interm_repr=True, pretrained=args.pretrained_aux)
         self.backbone = load_model(args, ret_interm_repr=False, pretrained=False)               
         
         in_features = self.backbone.configuration.hidden_size

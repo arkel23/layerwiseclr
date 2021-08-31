@@ -139,7 +139,7 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--cont_weight', type=float, default=1, 
                         help='Weight for contrastive loss')
 
-        parser.add_argument('--pretrained_checkpoint',action='store_true',
+        parser.add_argument('--pretrained_aux',action='store_true',
                         help='Loads pretrained model if available')
         parser.add_argument('--checkpoint_path', type=str, default=None)     
         parser.add_argument('--transfer_learning', action='store_true',
