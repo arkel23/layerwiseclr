@@ -14,12 +14,12 @@ python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 -
 
 Train a LWCLR twin model with full supervision with batch size=128, with contrast between the last layer of both models and all previous settings:
 ```
-train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_full_single --batch_size 128 --save_checkpoint_freq 50
+python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_full_single --batch_size 128 --save_checkpoint_freq 50
 ```
 
 Train a LWCLR twin model with SimCLR contrastive supervision for auxiliary model with batch size=64, with contrast between the last layer of both models and all previous settings:
 ```
-train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_cont_single --batch_size 64 --save_checkpoint_freq 50
+python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_cont_single --batch_size 64 --save_checkpoint_freq 50
 ```
 
 ## Description of models

@@ -11,7 +11,7 @@ from timm.data import create_transform
 def standard_transform(split, args):
     if split == 'train':
         transform = transforms.Compose([
-            transforms.Resize((args.image_size+32, args.image_size+32)),
+            transforms.Resize(args.image_size+32),
             transforms.RandomCrop((args.image_size, args.image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=0.1, 
