@@ -1,12 +1,17 @@
 import os
+import pandas as pd
+from PIL import Image
+from PIL import ImageFile
 
-from torch.utils.data import DataLoader, random_split
-import torchvision
+import torch
+from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 
 from pytorch_lightning import LightningDataModule
 from timm.data import create_transform
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 def standard_transform(split, args):
     if split == 'train':
@@ -146,15 +151,15 @@ class CIFAR10DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
         
 
 class CIFAR100DM(LightningDataModule):
@@ -192,15 +197,15 @@ class CIFAR100DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)   
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)   
          
             
 class ImageNetDM(LightningDataModule):
@@ -234,13 +239,113 @@ class ImageNetDM(LightningDataModule):
             
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
         
+
+class DanbooruFacesFullDM(LightningDataModule):
+    '''
+	https://github.com/arkel23/Danbooru2018AnimeCharacterRecognitionDataset_Revamped
+	'''
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+        self.batch_size = args.batch_size
+        self.num_workers = args.no_cpu_workers
+        self.transform_train = ApplyTransform(split='train', args=args)
+        self.transform_eval = ApplyTransform(split='val', args=args)
+        
+    def setup(self, stage=None):
+        '''called on each GPU separately - stage defines if we are at fit or test step'''
+        # we set up only relevant datasets when stage is specified (automatically set by Pytorch-Lightning)
+        if stage == 'fit' or stage is None:
+            self.dataset_train = DanbooruFacesFull(self.args, split='train', transform=self.transform_train)
+            self.dataset_val = DanbooruFacesFull(self.args, split='val', transform=self.transform_eval)
+            
+            self.num_classes = self.dataset_train.num_classes
+        
+        if stage == 'test' or stage is None:
+            self.dataset_test = DanbooruFacesFull(self.args, split='test', transform=self.transform_eval)
+            self.num_classes = self.dataset_test.num_classes
+            
+    def train_dataloader(self):
+        '''returns training dataloader'''
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
+        
+    def val_dataloader(self):
+        '''returns validation dataloader'''
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        
+    def test_dataloader(self):
+        '''returns test dataloader'''
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+    
+
+class DanbooruFacesFull(Dataset):
+	'''
+	https://github.com/arkel23/Danbooru2018AnimeCharacterRecognitionDataset_Revamped
+	'''
+	def __init__(self, args, 
+	split='train', transform=None):
+		super().__init__()
+		self.dataset_name = args.dataset_name
+		self.root = os.path.abspath(args.dataset_path)
+		self.image_size = args.image_size
+		self.split = split
+		self.transform = transform
+
+		if self.split=='train':
+			print('Train set')
+			self.set_dir = os.path.join(self.root, 'labels', 'train.csv')
+			if self.transform is None:
+				self.transform = ApplyTransform(split='train', args=args)
+
+		elif self.split=='val':
+			print('Validation set')
+			self.set_dir = os.path.join(self.root, 'labels', 'val.csv')
+			if self.transform is None:
+				self.transform = ApplyTransform(split='val', args=args)
+
+		else:
+			print('Test set')
+			self.set_dir = os.path.join(self.root, 'labels', 'test.csv')
+			if self.transform is None:
+				self.transform = ApplyTransform(split='test', args=args)
+    
+		self.df = pd.read_csv(self.set_dir, sep=',', header=None, names=['class_id', 'dir'], 
+				dtype={'class_id': 'UInt16', 'dir': 'object'})
+		
+		self.targets = self.df['class_id'].to_numpy()
+		self.data = self.df['dir'].to_numpy()
+		
+		self.classes = pd.read_csv(os.path.join(self.root, 'labels', 'classid_classname.csv'), 
+		sep=',', header=None, names=['class_id', 'class_name'], 
+		dtype={'class_id': 'UInt16', 'class_name': 'object'})
+		self.num_classes = len(self.classes)
+		
+	def __getitem__(self, idx):
+		
+		if torch.is_tensor(idx):
+			idx = idx.tolist()
+
+		img_dir, target = self.data[idx], self.targets[idx]
+		if self.dataset_name == 'danboorufaces':
+			img_dir = os.path.join(self.root, 'faces', img_dir)
+		elif self.dataset_name == 'danboorufull':
+			img_dir = os.path.join(self.root, 'fullMin256', img_dir)
+		img = Image.open(img_dir)
+
+		if self.transform:
+			img = self.transform(img)
+
+		return img, target
+
+	def __len__(self):
+		return len(self.targets)

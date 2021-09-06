@@ -7,7 +7,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 import lwclr.models as models
-from .datamodules import CIFAR10DM, CIFAR100DM, ImageNetDM
+from .datamodules import CIFAR10DM, CIFAR100DM, ImageNetDM, DanbooruFacesFullDM
 
 def ret_args(ret_parser=False):
 
@@ -26,7 +26,8 @@ def ret_args(ret_parser=False):
     parser.add_argument('--save_checkpoint_freq', default=100, type=int,
                         help='Frequency (in epochs) to save checkpoints')
 
-    parser.add_argument('--dataset_name', choices=['cifar10', 'cifar100', 'imagenet'], 
+    parser.add_argument('--dataset_name', 
+                        choices=['cifar10', 'cifar100', 'imagenet', 'danboorufaces', 'danboorufull'], 
                         default='cifar10', help='Which dataset to use.')
     parser.add_argument('--dataset_path', help='Path for the dataset.')
     parser.add_argument("--deit_recipe", action='store_true',
@@ -120,6 +121,8 @@ def return_prepared_dm(args):
         dm = CIFAR100DM(args)
     elif args.dataset_name == 'imagenet':
         dm = ImageNetDM(args)
+    elif args.dataset_name == 'danboorufaces' or 'danboorufull':
+        dm = DanbooruFacesFullDM(args)
     
     dm.prepare_data()
     dm.setup('fit')

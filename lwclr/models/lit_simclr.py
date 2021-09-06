@@ -58,9 +58,7 @@ class LitSimCLR(pl.LightningModule):
         self.criterion = NT_XentSimCLR(temp=args.temperature)
         
     def forward(self, x_i):
-        if not self.args.ret_interm_repr:
-            return self.backbone(x_i)
-        return self.backbone(x_i)[-1]
+        return self.backbone(x_i)
         
     def shared_step(self, batch):
         (x_i, x_j), _ = batch
@@ -117,9 +115,9 @@ class LitSimCLR(pl.LightningModule):
                         help='If doing warmup in terms of epochs instead of steps.')
 
         parser.add_argument('--model_name', 
-                        choices=['B_16', 'B_32', 'L_16', 'L_32', 
+                        choices=['Ti_16', 'Ti_32', 'S_16', 'S_32', 'B_16', 'B_32', 'L_16', 'L_32', 
                                  'effnet_b0', 'resnet18', 'resnet50'], 
-                        default='B_16', help='Which model architecture to use')
+                        default='Ti_16', help='Which model architecture to use')
         parser.add_argument('--vit_avg_pooling', action='store_true',
                             help='If use this flag then uses average pooling instead of cls token of ViT')
         
