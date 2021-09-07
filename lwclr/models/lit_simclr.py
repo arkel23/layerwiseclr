@@ -117,7 +117,7 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--model_name', 
                         choices=['Ti_16', 'Ti_32', 'S_16', 'S_32', 'B_16', 'B_32', 'L_16', 'L_32', 
                                  'effnet_b0', 'resnet18', 'resnet50'], 
-                        default='Ti_16', help='Which model architecture to use')
+                        default='B_16', help='Which model architecture to use')
         parser.add_argument('--vit_avg_pooling', action='store_true',
                             help='If use this flag then uses average pooling instead of cls token of ViT')
         
