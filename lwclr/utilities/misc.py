@@ -42,7 +42,7 @@ def ret_args(ret_parser=False):
     
     parser = pl.Trainer.add_argparse_args(parser)
     parser.set_defaults(gpus=1, max_epochs=2, gradient_clip_val=1.0)
-    parser.set_defaults(precision=32, log_gpu_memory=None, profiler=None)
+    parser.set_defaults(precision=16, log_gpu_memory=None, profiler=None, benchmark=True)
 
     if ret_parser:
         return parser
