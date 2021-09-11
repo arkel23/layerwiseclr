@@ -154,15 +154,15 @@ class CIFAR10DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
         
 
 class CIFAR100DM(LightningDataModule):
@@ -203,15 +203,15 @@ class CIFAR100DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)   
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)   
          
             
 class ImageNetDM(LightningDataModule):
@@ -245,15 +245,15 @@ class ImageNetDM(LightningDataModule):
             
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
         
 
 class DanbooruFacesFullDM(LightningDataModule):
@@ -283,15 +283,15 @@ class DanbooruFacesFullDM(LightningDataModule):
             
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
     
 
 class DanbooruFacesFull(Dataset):
