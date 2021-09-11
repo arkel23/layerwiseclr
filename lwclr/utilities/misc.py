@@ -14,8 +14,8 @@ def ret_args(ret_parser=False):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, 
-                        choices=['simclr', 'lwclr_full_all', 'lwclr_full_single', 
-                            'lwclr_cont_all', 'lwclr_cont_single', 'linear_eval', 'fine_tuning'],
+                        choices=['simclr', 'lwclr_full_mult', 'lwclr_full_single', 
+                            'lwclr_cont_mult', 'lwclr_cont_single', 'linear_eval', 'fine_tuning'],
                         default='simlwclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
@@ -102,9 +102,9 @@ def load_trainer(args, model, wandb_logger):
 def load_plmodel(args):
     if args.mode == 'simclr':
         model = models.LitSimCLR(args)
-    elif args.mode in ['lwclr_full_all', 'lwclr_full_single']:
+    elif args.mode in ['lwclr_full_mult', 'lwclr_full_single']:
         model = models.LitLWCLRFull(args)
-    elif args.mode in ['lwclr_cont_all', 'lwclr_cont_single']:
+    elif args.mode in ['lwclr_cont_mult', 'lwclr_cont_single']:
         model = models.LitLWCLRCont(args)
     elif args.mode == 'linear_eval' or args.mode == 'fine_tuning':
         model = models.LitEvaluator(args)
@@ -113,15 +113,16 @@ def load_plmodel(args):
 
 def return_prepared_dm(args):
 
-    assert args.dataset_path, "Dataset path must not be empty."
     # setup data
     if args.dataset_name == 'cifar10':
         dm = CIFAR10DM(args)
     elif args.dataset_name == 'cifar100':
         dm = CIFAR100DM(args)
     elif args.dataset_name == 'imagenet':
+        assert args.dataset_path, "Dataset path must not be empty."
         dm = ImageNetDM(args)
     elif args.dataset_name == 'danboorufaces' or 'danboorufull':
+        assert args.dataset_path, "Dataset path must not be empty."
         dm = DanbooruFacesFullDM(args)
     
     dm.prepare_data()

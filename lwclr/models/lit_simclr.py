@@ -128,8 +128,8 @@ class LitSimCLR(pl.LightningModule):
                         help='Layer features for pairs')
         parser.add_argument('--random_layer_contrast', action='store_true',
                             help='If use this flag then at each step chooses a random layer from gen to contrast against')
-        parser.add_argument('--cont_layers_range', type=int, default=3,
-                        help='Choose which last N layers to contrast from.')
+        parser.add_argument('--cont_layers_range', type=int, default=2,
+                        help='Choose which last N layers to contrast from (def last 2 layers).')
         parser.add_argument('--representation_size', type=int, default=512,
                         help='Number of units in intermediate representation and final layer')
         parser.add_argument('--freeze_aux', action='store_true',

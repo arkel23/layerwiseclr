@@ -4,7 +4,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 from .model_selection import load_model
-from .lit_lwclr_cont import ContrastiveHead
+from .lit_lwclr_cont import SimContrastiveHead, LWContrastiveHead
 from .scheduler import WarmupCosineSchedule
 from .lit_evaluator import freeze_layers
     
@@ -38,9 +38,14 @@ class LitLWCLRFull(pl.LightningModule):
         in_features = self.backbone.configuration.hidden_size
         repr_size = self.args.representation_size
         
-        self.contrastive_head = ContrastiveHead(in_features=in_features,
-            out_features=repr_size, hidden_size=repr_size, 
-            no_layers=args.no_proj_layers, temp=args.temperature)
+        if self.args.mode == 'lwclr_full_single':
+            self.contrastive_head = SimContrastiveHead(in_features=in_features,
+                out_features=repr_size, hidden_size=repr_size, 
+                no_layers=args.no_proj_layers, temp=args.temperature)
+        else:
+            self.contrastive_head = LWContrastiveHead(in_features=in_features,
+                out_features=repr_size, hidden_size=repr_size, 
+                no_layers=args.no_proj_layers, temp=args.temperature)
         
         self.aux = ClassificationHead(in_features=in_features,
                 classes=args.num_classes)
@@ -64,12 +69,13 @@ class LitLWCLRFull(pl.LightningModule):
             if self.args.random_layer_contrast:
                 last_layer = self.backbone.configuration.num_hidden_layers - 1
                 features_aux = interm_features[
-                    random.randint(last_layer - self.args.cont_layers_range, last_layer)].detach()
+                    random.randint(last_layer - self.args.cont_layers_range + 1, last_layer)].detach()
             else:
                 features_aux = interm_features[self.args.layer_contrast].detach()
             loss = self.contrastive_head(features, features_aux)
         else:
-            raise NotImplementedError    
+            features_aux = interm_features[-self.args.cont_layers_range:]
+            loss = self.contrastive_head(features, features_aux)    
         
         return loss, loss_aux             
 

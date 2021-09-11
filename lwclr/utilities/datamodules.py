@@ -120,7 +120,10 @@ class CIFAR10DM(LightningDataModule):
 
     def __init__(self, args):
         super().__init__()
-        self.data_dir = args.dataset_path
+        if args.dataset_path:
+            self.data_dir = args.dataset_path
+        else:
+            self.data_dir = 'data'
         self.batch_size = args.batch_size
         self.image_size = args.image_size
         self.num_workers = args.no_cpu_workers
@@ -166,7 +169,10 @@ class CIFAR100DM(LightningDataModule):
 
     def __init__(self, args):
         super().__init__()
-        self.data_dir = args.dataset_path
+        if args.dataset_path:
+            self.data_dir = args.dataset_path
+        else:
+            self.data_dir = 'data'
         self.batch_size = args.batch_size
         self.image_size = args.image_size
         self.num_workers = args.no_cpu_workers

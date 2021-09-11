@@ -11,12 +11,12 @@ class ProjectionHead(nn.Module):
             
         if no_layers == 1:
             self.projection_head = nn.Sequential(
-                Flatten(), 
+                #Flatten(), 
                 nn.Linear(in_features, out_features, bias=True)
             )     
         elif no_layers == 2:
             self.projection_head = nn.Sequential(
-                Flatten(),
+                #Flatten(),
                 nn.Linear(in_features, hidden_size),
                 nn.GELU(),
                 nn.LayerNorm(hidden_size, eps=layer_norm_eps),
@@ -24,7 +24,7 @@ class ProjectionHead(nn.Module):
             )
         elif no_layers == 3:
             self.projection_head = nn.Sequential(
-                Flatten(),
+                #Flatten(),
                 nn.Linear(in_features, hidden_size),
                 nn.GELU(),
                 nn.LayerNorm(hidden_size, eps=layer_norm_eps),
