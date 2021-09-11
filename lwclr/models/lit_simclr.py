@@ -49,7 +49,7 @@ class LitSimCLR(pl.LightningModule):
         self.backbone = load_model(args, ret_interm_repr=False)                
         
         in_features = self.backbone.configuration.hidden_size
-        repr_size = self.backbone.configuration.representation_size
+        repr_size = self.args.representation_size
         
         self.model = SimCLR(self.backbone, 
             no_layers=args.no_proj_layers, in_features=in_features, 
@@ -115,9 +115,10 @@ class LitSimCLR(pl.LightningModule):
                         help='If doing warmup in terms of epochs instead of steps.')
 
         parser.add_argument('--model_name', 
-                        choices=['Ti_16', 'Ti_32', 'S_16', 'S_32', 'B_16', 'B_32', 'L_16', 'L_32', 
+                        choices=['Ti_16', 'Ti_32', 'S_16', 'S_32', 'B_16', 'B_32', 'L_16', 'L_32',
+                                 'B_16_in1k', 
                                  'effnet_b0', 'resnet18', 'resnet50'], 
-                        default='B_16', help='Which model architecture to use')
+                        default='B_16_in1k', help='Which model architecture to use')
         parser.add_argument('--vit_avg_pooling', action='store_true',
                             help='If use this flag then uses average pooling instead of cls token of ViT')
         
@@ -129,7 +130,11 @@ class LitSimCLR(pl.LightningModule):
                             help='If use this flag then at each step chooses a random layer from gen to contrast against')
         parser.add_argument('--cont_layers_range', type=int, default=3,
                         help='Choose which last N layers to contrast from.')
-        
+        parser.add_argument('--representation_size', type=int, default=512,
+                        help='Number of units in intermediate representation and final layer')
+        parser.add_argument('--freeze_aux', action='store_true',
+                            help='If use this flag then freeze aux network')
+
         parser.add_argument('--fs_weight', type=float, default=1, 
                         help='Weight for fully supervised loss')
         parser.add_argument('--pl_weight', type=float, default=1, 

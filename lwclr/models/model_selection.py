@@ -115,8 +115,8 @@ class EffNet(nn.Module):
                     Rearrange('b c 1 1 -> b c')
             )
         
-        Config = namedtuple('Config', ['hidden_size', 'representation_size', 'num_classes', 'num_hidden_layers'])
-        self.configuration = Config(hidden_size=final_dim, representation_size=final_dim, 
+        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
+        self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
 
     @torch.no_grad()
@@ -171,8 +171,8 @@ class ResNet(nn.Module):
                     Rearrange('b c 1 1 -> b c')
             )
         
-        Config = namedtuple('Config', ['hidden_size', 'representation_size', 'num_classes', 'num_hidden_layers'])
-        self.configuration = Config(hidden_size=final_dim, representation_size=final_dim, 
+        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
+        self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
          
     @torch.no_grad()

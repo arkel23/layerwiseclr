@@ -8,6 +8,7 @@ from .heads import ProjectionHead
 from .model_selection import load_model
 from .custom_losses import NT_XentSimCLR
 from .scheduler import WarmupCosineSchedule
+from .lit_evaluator import freeze_layers
 
 class ContrastiveHead(nn.Module):
     def __init__(self, in_features: int, out_features: int, 
@@ -35,10 +36,13 @@ class LitLWCLRCont(pl.LightningModule):
         # one model for giving/generating layer-wise views
         # another for receiving and evaluating them
         self.backbone_aux = load_model(args, ret_interm_repr=True, pretrained=args.pretrained_aux)
-        self.backbone = load_model(args, ret_interm_repr=False, pretrained=False)               
+        self.backbone = load_model(args, ret_interm_repr=False, pretrained=False)
+        
+        if self.args.freeze_aux:
+            freeze_layers(self.backbone_aux)            
         
         in_features = self.backbone.configuration.hidden_size
-        repr_size = self.backbone.configuration.representation_size
+        repr_size = self.args.representation_size
         
         self.contrastive_head = ContrastiveHead(in_features=in_features,
             out_features=repr_size, hidden_size=repr_size, 
@@ -48,6 +52,7 @@ class LitLWCLRCont(pl.LightningModule):
             no_layers=args.no_proj_layers, in_features=in_features, 
             out_features=repr_size, hidden_size=repr_size,
             ret_interm_repr=True, layers_contrast=[-1, -1])
+        
         self.criterion_aux = NT_XentSimCLR(temp=args.temperature)
             
     def forward(self, x_i):
