@@ -130,6 +130,8 @@ class CIFAR10DM(LightningDataModule):
         self.transform_train = ApplyTransform(split='train', args=args)
         self.transform_eval = ApplyTransform(split='val', args=args)
         
+        self.persist = True if (args.gpus > 1) else False
+                    
     def prepare_data(self):
         '''called only once and on 1 GPU'''
         # download data
@@ -154,15 +156,15 @@ class CIFAR10DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
         
 
 class CIFAR100DM(LightningDataModule):
@@ -178,6 +180,8 @@ class CIFAR100DM(LightningDataModule):
         self.num_workers = args.no_cpu_workers
         self.transform_train = ApplyTransform(split='train', args=args)
         self.transform_eval = ApplyTransform(split='val', args=args)
+        
+        self.persist = True if (args.gpus > 1) else False
         
     def prepare_data(self):
         '''called only once and on 1 GPU'''
@@ -203,15 +207,15 @@ class CIFAR100DM(LightningDataModule):
 
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)   
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)   
          
             
 class ImageNetDM(LightningDataModule):
@@ -224,6 +228,8 @@ class ImageNetDM(LightningDataModule):
         self.num_workers = args.no_cpu_workers
         self.transform_train = ApplyTransform(split='train', args=args)
         self.transform_eval = ApplyTransform(split='val', args=args)
+        
+        self.persist = True if (args.gpus > 1) else False
         
     def setup(self, stage=None):
         '''called on each GPU separately - stage defines if we are at fit or test step'''
@@ -245,15 +251,15 @@ class ImageNetDM(LightningDataModule):
             
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
         
 
 class DanbooruFacesFullDM(LightningDataModule):
@@ -267,6 +273,8 @@ class DanbooruFacesFullDM(LightningDataModule):
         self.num_workers = args.no_cpu_workers
         self.transform_train = ApplyTransform(split='train', args=args)
         self.transform_eval = ApplyTransform(split='val', args=args)
+        
+        self.persist = True if (args.gpus > 1) else False
         
     def setup(self, stage=None):
         '''called on each GPU separately - stage defines if we are at fit or test step'''
@@ -283,15 +291,15 @@ class DanbooruFacesFullDM(LightningDataModule):
             
     def train_dataloader(self):
         '''returns training dataloader'''
-        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True, drop_last=True)
+        return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist, drop_last=True)
         
     def val_dataloader(self):
         '''returns validation dataloader'''
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
         
     def test_dataloader(self):
         '''returns test dataloader'''
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=True)
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True, persistent_workers=self.persist)
     
 
 class DanbooruFacesFull(Dataset):
