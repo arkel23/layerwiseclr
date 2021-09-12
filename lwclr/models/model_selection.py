@@ -132,7 +132,7 @@ class EffNet(nn.Module):
         nn.init.constant_(self.model._fc.bias, 0)
     
     def get_reduction_dims(self, image_size):
-        img = torch.rand(1, 3, image_size, image_size)
+        img = torch.rand(2, 3, image_size, image_size)
         features = self.model.extract_endpoints(img)
         dims = [layer_output.size(1) for layer_output in features.values()]
         return dims
@@ -186,7 +186,7 @@ class ResNet(nn.Module):
         self.apply(_init)
         
     def get_reduction_dims(self, image_size):
-        img = torch.rand(1, 3, image_size, image_size)
+        img = torch.rand(2, 3, image_size, image_size)
         features = self.model(img)
         dims = [layer_output.size(1) for layer_output in features]
         return dims
