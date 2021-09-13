@@ -9,12 +9,10 @@ from .scheduler import WarmupCosineSchedule
 from .lit_evaluator import freeze_layers
     
 class ClassificationHead(nn.Module):
-    def __init__(self, in_features: int, classes: int, 
-                layer_norm_eps: float = 1e-12):
+    def __init__(self, in_features: int, classes: int):
         super(ClassificationHead, self).__init__()
         
         self.class_head = nn.Sequential(
-            nn.LayerNorm(in_features, eps=layer_norm_eps),
             nn.Linear(in_features, classes)
         )
         
@@ -36,15 +34,16 @@ class LitLWCLRFull(pl.LightningModule):
             freeze_layers(self.backbone_aux)             
         
         in_features = self.backbone.configuration.hidden_size
-        repr_size = self.args.representation_size
+        hidden_size = self.args.projector_hidden_size
+        out_features = self.args.projector_output_size
         
         if self.args.mode == 'lwclr_full_single':
             self.contrastive_head = SimContrastiveHead(in_features=in_features,
-                out_features=repr_size, hidden_size=repr_size, 
+                out_features=out_features, hidden_size=hidden_size, 
                 no_layers=args.no_proj_layers, temp=args.temperature)
         else:
             self.contrastive_head = LWContrastiveHead(in_features=in_features,
-                out_features=repr_size, hidden_size=repr_size, 
+                out_features=out_features, hidden_size=hidden_size, 
                 no_layers=args.no_proj_layers, temp=args.temperature)
         
         self.aux = ClassificationHead(in_features=in_features,

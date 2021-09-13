@@ -48,9 +48,9 @@ def ret_args(ret_parser=False):
         return parser
     args = parser.parse_args()
 
-    args.run_name = '{}_{}_{}_is{}_bs{}_{}lr{}_seed{}'.format(
-        args.mode, args.dataset_name, args.model_name, args.image_size, args.batch_size, 
-        args.optimizer, args.learning_rate, args.seed)
+    args.run_name = '{}_layers{}_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
+        args.mode, args.cont_layers_range, args.dataset_name, args.model_name, args.image_size, args.batch_size, 
+        args.optimizer, args.learning_rate, args.weight_decay, args.seed)
 
     if args.deit_recipe:
         ''' taken from DeiT paper

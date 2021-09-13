@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 
 from .lit_simclr import SimCLR
-from .heads import ProjectionHead
+from .heads import ProjectionHead, ProjectionMLP
 from .model_selection import load_model
 from .custom_losses import NT_XentSimCLR, SupConLoss
 from .scheduler import WarmupCosineSchedule
@@ -18,6 +18,8 @@ class LWContrastiveHead(nn.Module):
         
         self.projector = ProjectionHead(no_layers=no_layers, in_features=in_features, 
                             out_features=out_features, hidden_size=hidden_size)
+        #self.projector = ProjectionMLP(in_dim=in_features, hidden_dim=hidden_size, 
+        #                               out_dim=out_features, num_layers=no_layers)
 
         self.criterion = SupConLoss(temperature=temp, base_temperature=temp, contrast_mode='all')
         
@@ -37,6 +39,8 @@ class SimContrastiveHead(nn.Module):
         
         self.projector = ProjectionHead(no_layers=no_layers, in_features=in_features, 
                             out_features=out_features, hidden_size=hidden_size)
+        #self.projector = ProjectionMLP(in_dim=in_features, hidden_dim=hidden_size, 
+        #                               out_dim=out_features, num_layers=no_layers)
 
         self.criterion = NT_XentSimCLR(temp=temp)
         
@@ -62,20 +66,21 @@ class LitLWCLRCont(pl.LightningModule):
             freeze_layers(self.backbone_aux)            
         
         in_features = self.backbone.configuration.hidden_size
-        repr_size = self.args.representation_size
+        hidden_size = self.args.projector_hidden_size
+        out_features = self.args.projector_output_size
         
         if self.args.mode == 'lwclr_cont_single':
             self.contrastive_head = SimContrastiveHead(in_features=in_features,
-                out_features=repr_size, hidden_size=repr_size, 
+                out_features=out_features, hidden_size=hidden_size, 
                 no_layers=args.no_proj_layers, temp=args.temperature)
         else:
             self.contrastive_head = LWContrastiveHead(in_features=in_features,
-                out_features=repr_size, hidden_size=repr_size, 
+                out_features=out_features, hidden_size=hidden_size, 
                 no_layers=args.no_proj_layers, temp=args.temperature)
                     
         self.aux = SimCLR(self.backbone_aux, 
             no_layers=args.no_proj_layers, in_features=in_features, 
-            out_features=repr_size, hidden_size=repr_size,
+            out_features=out_features, hidden_size=hidden_size,
             ret_interm_repr=True, layers_contrast=[-1, -1])
         
         self.criterion_aux = NT_XentSimCLR(temp=args.temperature)

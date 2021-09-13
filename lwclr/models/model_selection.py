@@ -74,16 +74,19 @@ class VisionTransformer(nn.Module):
                 nn.AdaptiveAvgPool1d(1),
                 Rearrange('b d 1 -> b d')
             )
+        else:
+            self.norm = nn.LayerNorm(self.configuration.hidden_size, 
+                                     eps=self.configuration.layer_norm_eps),
         
     def forward(self, images, mask=None):
         if self.ret_interm_repr:
             _, interm_features = self.model(images, mask)
             if hasattr(self, 'pool'):
                 return [self.pool(features) for features in interm_features]
-            return [features[:, 0] for features in interm_features]
+            return [self.norm(features[:, 0]) for features in interm_features]
         if hasattr(self, 'pool'):
             return self.pool(self.model(images, mask))
-        return self.model(images, mask)[:, 0]
+        return self.norm(self.model(images, mask)[:, 0])
 
 class EffNet(nn.Module):
     def __init__(self, args, ret_interm_repr=True, pretrained=False):

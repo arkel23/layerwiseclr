@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
-from .heads import ProjectionHead
+from .heads import ProjectionHead, ProjectionMLP
 from .model_selection import load_model
 from .custom_losses import NT_XentSimCLR
 from .scheduler import WarmupCosineSchedule
@@ -22,6 +22,8 @@ class SimCLR(nn.Module):
 
         self.projector = ProjectionHead(no_layers=no_layers, in_features=in_features, 
                             out_features=out_features, hidden_size=hidden_size)
+        #self.projector = ProjectionMLP(in_dim=in_features, hidden_dim=hidden_size, 
+        #                               out_dim=out_features, num_layers=no_layers)
 
         self.ret_interm_repr = ret_interm_repr
         self.layers_contrast = layers_contrast
@@ -49,11 +51,12 @@ class LitSimCLR(pl.LightningModule):
         self.backbone = load_model(args, ret_interm_repr=False)                
         
         in_features = self.backbone.configuration.hidden_size
-        repr_size = self.args.representation_size
+        hidden_size = self.args.projector_hidden_size
+        out_features = self.args.projector_output_size
         
         self.model = SimCLR(self.backbone, 
             no_layers=args.no_proj_layers, in_features=in_features, 
-            out_features=repr_size, hidden_size=repr_size)
+            out_features=out_features, hidden_size=hidden_size)
 
         self.criterion = NT_XentSimCLR(temp=args.temperature)
         
@@ -115,14 +118,14 @@ class LitSimCLR(pl.LightningModule):
                         help='If doing warmup in terms of epochs instead of steps.')
 
         parser.add_argument('--model_name', 
-                        choices=['Ti_16', 'Ti_32', 'S_16', 'S_32', 'B_16', 'B_32', 'L_16', 'L_32',
-                                 'B_16_in1k', 
+                        choices=['Ti_4', 'Ti_8', 'Ti_16', 'Ti_32', 'S_4', 'S_8', 'S_16', 'S_32', 
+                                 'B_4', 'B_8', 'B_16', 'B_32', 'L_16', 'L_32', 'B_16_in1k', 
                                  'effnet_b0', 'resnet18', 'resnet50'], 
                         default='B_16_in1k', help='Which model architecture to use')
         parser.add_argument('--vit_avg_pooling', action='store_true',
                             help='If use this flag then uses average pooling instead of cls token of ViT')
         
-        parser.add_argument('--no_proj_layers', type=int, choices=[1, 2, 3], default=2,
+        parser.add_argument('--no_proj_layers', type=int, choices=[1, 2, 3], default=3,
                             help='Number of layers for projection head.')
         parser.add_argument('--layer_contrast', type=int, default=-1, 
                         help='Layer features for pairs')
@@ -130,10 +133,13 @@ class LitSimCLR(pl.LightningModule):
                             help='If use this flag then at each step chooses a random layer from gen to contrast against')
         parser.add_argument('--cont_layers_range', type=int, default=2,
                         help='Choose which last N layers to contrast from (def last 2 layers).')
-        parser.add_argument('--representation_size', type=int, default=512,
-                        help='Number of units in intermediate representation and final layer')
         parser.add_argument('--freeze_aux', action='store_true',
                             help='If use this flag then freeze aux network')
+        
+        parser.add_argument('--projector_hidden_size', type=int, default=2048,
+                        help='Number of units in hidden layer of MLP projector')
+        parser.add_argument('--projector_output_size', type=int, default=2048,
+                        help='Number of units in output layer of MLP projector')
 
         parser.add_argument('--fs_weight', type=float, default=1, 
                         help='Weight for fully supervised loss')
