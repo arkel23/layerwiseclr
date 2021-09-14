@@ -5,9 +5,9 @@ import lwclr as lwclr
 
 def train_main(init=True):
     
-    args = lwclr.utilities.misc.ret_args()
+    args = lwclr.utilities.loaders.ret_args()
 
-    dm, trainer, model = lwclr.utilities.misc.environment_loader(args)
+    dm, trainer, model = lwclr.utilities.loaders.environment_loader(args)
     print(args, str(model.backbone.configuration))
 
     trainer.fit(model, dm)

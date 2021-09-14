@@ -11,47 +11,6 @@ from .custom_losses import NT_XentSimCLR, SupConLoss
 from .scheduler import WarmupCosineSchedule
 from .lit_evaluator import freeze_layers
 
-class LWContrastiveHead(nn.Module):
-    def __init__(self, in_features: int, out_features: int, 
-                hidden_size: int, no_layers: int = 2, temp: float = 0.5):
-        super(LWContrastiveHead, self).__init__()
-        
-        self.projector = ProjectionHead(no_layers=no_layers, in_features=in_features, 
-                            out_features=out_features, hidden_size=hidden_size)
-        #self.projector = ProjectionMLP(in_dim=in_features, hidden_dim=hidden_size, 
-        #                               out_dim=out_features, num_layers=no_layers)
-
-        self.criterion = SupConLoss(temperature=temp, base_temperature=temp, contrast_mode='all')
-        
-    def forward(self, features, features_aux):
-        features_aux = torch.stack(features_aux, dim=1).detach()
-        features = torch.cat([features.unsqueeze(1), features_aux], dim=1)
-        z = self.projector(features)
-        
-        loss = self.criterion(F.normalize(z, dim=2))
-        return loss
-    
-    
-class SimContrastiveHead(nn.Module):
-    def __init__(self, in_features: int, out_features: int, 
-                hidden_size: int, no_layers: int = 2, temp: float = 0.5):
-        super(SimContrastiveHead, self).__init__()
-        
-        self.projector = ProjectionHead(no_layers=no_layers, in_features=in_features, 
-                            out_features=out_features, hidden_size=hidden_size)
-        #self.projector = ProjectionMLP(in_dim=in_features, hidden_dim=hidden_size, 
-        #                               out_dim=out_features, num_layers=no_layers)
-
-        self.criterion = NT_XentSimCLR(temp=temp)
-        
-    def forward(self, h_i, h_j):
-        z_i = self.projector(h_i)
-        z_j = self.projector(h_j)
-        
-        loss = self.criterion(z_i, z_j)
-        return loss
-    
-        
 class LitLWCLRCont(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
@@ -72,16 +31,16 @@ class LitLWCLRCont(pl.LightningModule):
         if self.args.mode == 'lwclr_cont_single':
             self.contrastive_head = SimContrastiveHead(in_features=in_features,
                 out_features=out_features, hidden_size=hidden_size, 
-                no_layers=args.no_proj_layers, temp=args.temperature)
+                no_layers=args.no_proj_layers, temp=args.temperature, bn_proj=self.args.bn_proj)
         else:
             self.contrastive_head = LWContrastiveHead(in_features=in_features,
                 out_features=out_features, hidden_size=hidden_size, 
-                no_layers=args.no_proj_layers, temp=args.temperature)
+                no_layers=args.no_proj_layers, temp=args.temperature, bn_proj=self.args.bn_proj)
                     
         self.aux = SimCLR(self.backbone_aux, 
             no_layers=args.no_proj_layers, in_features=in_features, 
             out_features=out_features, hidden_size=hidden_size,
-            ret_interm_repr=True, layers_contrast=[-1, -1])
+            ret_interm_repr=True, bn_proj=self.args.bn_proj, layers_contrast=[-1, -1])
         
         self.criterion_aux = NT_XentSimCLR(temp=args.temperature)
             

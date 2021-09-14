@@ -5,7 +5,7 @@ from torch.nn import functional as F
 import  pytorch_lightning as pl
 from torchmetrics.functional import accuracy
 
-from .heads import ProjectionHead
+from .heads import ProjectionMLPHead
 from .model_selection import load_model
 from .scheduler import WarmupCosineSchedule
 
@@ -31,8 +31,8 @@ class LitEvaluator(pl.LightningModule):
         in_features = self.backbone.configuration.hidden_size
         num_classes = self.backbone.configuration.num_classes
         
-        self.linear_head =  ProjectionHead(
-            no_layers=1, in_features=in_features, out_features=num_classes)
+        self.linear_head =  ProjectionMLPHead(
+            linear=True, no_layers=1, in_features=in_features, out_features=num_classes)
 
     def forward(self, x):
         return self.linear_head(self.backbone(x)[:, 0])

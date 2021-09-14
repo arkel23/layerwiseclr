@@ -76,7 +76,7 @@ class VisionTransformer(nn.Module):
             )
         else:
             self.norm = nn.LayerNorm(self.configuration.hidden_size, 
-                                     eps=self.configuration.layer_norm_eps),
+                                     eps=self.configuration.layer_norm_eps)
         
     def forward(self, images, mask=None):
         if self.ret_interm_repr:

@@ -93,7 +93,7 @@ class ApplyTransform:
         self.split = split
         self.args = args
 
-        if args.mode in ['simclr', 'lwclr_cont_full', 'lwclr_cont_single']:
+        if args.mode in ['simclr',]:
             self.mode = 'simclr'
         else:
             self.mode = 'default'

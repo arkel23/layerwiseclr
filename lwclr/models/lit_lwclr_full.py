@@ -4,21 +4,10 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 from .model_selection import load_model
-from .lit_lwclr_cont import SimContrastiveHead, LWContrastiveHead
 from .scheduler import WarmupCosineSchedule
 from .lit_evaluator import freeze_layers
+from .heads import ProjectionMLPHead, SimContrastiveHead, LWContrastiveHead
     
-class ClassificationHead(nn.Module):
-    def __init__(self, in_features: int, classes: int):
-        super(ClassificationHead, self).__init__()
-        
-        self.class_head = nn.Sequential(
-            nn.Linear(in_features, classes)
-        )
-        
-    def forward(self, x):
-        return self.class_head(x)
-        
         
 class LitLWCLRFull(pl.LightningModule):
     def __init__(self, args):
@@ -46,8 +35,8 @@ class LitLWCLRFull(pl.LightningModule):
                 out_features=out_features, hidden_size=hidden_size, 
                 no_layers=args.no_proj_layers, temp=args.temperature)
         
-        self.aux = ClassificationHead(in_features=in_features,
-                classes=args.num_classes)
+        self.aux = ProjectionMLPHead(linear=True, no_layers=1, 
+                in_features=in_features, out_features=args.num_classes)
         
         self.criterion_aux = nn.CrossEntropyLoss()
            
