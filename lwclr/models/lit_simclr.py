@@ -89,10 +89,12 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--model_name', 
                         choices=['Ti_4', 'Ti_8', 'Ti_16', 'Ti_32', 'S_4', 'S_8', 'S_16', 'S_32', 
                                  'B_4', 'B_8', 'B_16', 'B_32', 'L_16', 'L_32', 'B_16_in1k', 
-                                 'effnet_b0', 'resnet18', 'resnet50'], 
+                                 'effnet_b0', 'resnet18', 'resnet50', 'alexnet'], 
                         default='B_16_in1k', help='Which model architecture to use')
         parser.add_argument('--vit_avg_pooling', action='store_true',
                             help='If use this flag then uses average pooling instead of cls token of ViT')
+        parser.add_argument('--model_name_teacher', type=str, default=None, 
+                            help='By default uses same architecture as main network, but can choose any other')
         
         parser.add_argument('--layer_contrast', type=int, default=-1, 
                         help='Layer features for pairs')
@@ -100,8 +102,8 @@ class LitSimCLR(pl.LightningModule):
                             help='If use this flag then at each step chooses a random layer from gen to contrast against')
         parser.add_argument('--cont_layers_range', type=int, default=2,
                         help='Choose which last N layers to contrast from (def last 2 layers).')
-        parser.add_argument('--freeze_aux', action='store_true',
-                            help='If use this flag then freeze aux network')
+        parser.add_argument('--freeze_teacher', action='store_true',
+                            help='If use this flag then freeze teacher network')
         
         parser.add_argument('--bn_proj', action='store_true',
                             help='If use this flag then uses projector MLP with BN instead of LN')
@@ -119,7 +121,7 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--cont_weight', type=float, default=1, 
                         help='Weight for contrastive loss')
 
-        parser.add_argument('--pretrained_aux',action='store_true',
+        parser.add_argument('--pretrained_teacher',action='store_true',
                         help='Loads pretrained model if available')
         parser.add_argument('--checkpoint_path', type=str, default=None)     
         parser.add_argument('--transfer_learning', action='store_true',

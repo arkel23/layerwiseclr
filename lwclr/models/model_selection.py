@@ -1,6 +1,8 @@
 from collections import namedtuple
 import torch 
 import torch.nn as nn
+import torchvision.models as models
+import torchvision.models.feature_extraction as feature_extraction
 import einops
 from einops.layers.torch import Rearrange
 
@@ -10,9 +12,16 @@ from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 
 def load_model(args, ret_interm_repr=True, pretrained=False):
     # initiates model and loss
-    if args.model_name == 'effnet_b0':
+    if args.model_name_teacher:
+        model_name = args.model_name_teacher
+    else:
+        model_name = args.model_name
+            
+    if model_name == 'effnet_b0':
         model = EfficientNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
-    elif 'resnet' in args.model_name:
+    elif model_name == 'alexnet':
+        model = AlexNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
+    elif 'resnet' in model_name:
         model = ResNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     else:
         model = VisionTransformer(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
@@ -199,6 +208,71 @@ class ResNet(nn.Module):
             interm_features = self.model(x)
             return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
         return self.reshaping_head(self.model(x)[-1])
+
+
+class AlexNet(nn.Module):
+    def __init__(self, args, ret_interm_repr=True, pretrained=False):
+        super(AlexNet, self).__init__()
+        
+        self.ret_interm_repr = ret_interm_repr
+        
+        model = models.alexnet(pretrained=pretrained, progress=True)
+        # node_names for outputs after Conv2d+ReLU
+        # train_nodes, eval_nodes = feature_extraction.get_graph_node_names()
+        # features.1, features.4, features.7, features.9, features.11
+        return_nodes = {
+            'features.1': 'layer1',
+            'features.4': 'layer2',
+            'features.7': 'layer3',
+            'features.9': 'layer4',
+            'features.11': 'layer5'
+        }
+        self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
+        
+        if not pretrained:
+            self.init_weights()
+        
+        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
+        final_dim = original_dimensions[-1]
+        
+        if self.ret_interm_repr:
+            self.reshaping_head = nn.ModuleList([
+                nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c'),
+                    nn.Linear(original_dim, final_dim)
+                ) 
+            for original_dim in original_dimensions])
+        else:
+            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c')
+            )
+        
+        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
+        self.configuration = Config(hidden_size=final_dim, 
+                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
+         
+    @torch.no_grad()
+    def init_weights(self):
+        def _init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+            
+        self.apply(_init)
+        
+    def get_reduction_dims(self, image_size):
+        img = torch.rand(2, 3, image_size, image_size)
+        features = self.model(img)
+        dims = [layer_output.size(1) for layer_output in features.values()]
+        return dims
+    
+    def forward(self, x):
+        if self.ret_interm_repr:
+            interm_features = self.model(x).values()
+            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
+        return self.reshaping_head(self.model(x)['layer5'])
 
 
 

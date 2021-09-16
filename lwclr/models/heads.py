@@ -18,64 +18,63 @@ class ProjectionMLPHead(nn.Module):
         
         if linear:
             self.no_layers = 1
-            self.layer1 = nn.Sequential(
+            self.projector = nn.Sequential(
                 nn.Linear(in_features, out_features, bias=True)
             )
         else:
             if batch_norm:
                 if no_layers == 1:
-                    self.layer1 = nn.Sequential(
+                    self.projector = nn.Sequential(
                         nn.Linear(in_features, out_features, bias=True),
                         nn.BatchNorm1d(out_features)
                     )
-                else:
-                    self.layer1 = nn.Sequential(
+                elif no_layers == 2:
+                    self.projector = nn.Sequential(
                         nn.Linear(in_features, hidden_size),
                         nn.BatchNorm1d(hidden_size),
-                        nn.ReLU(inplace=True)
+                        nn.ReLU(inplace=True),
+                        nn.Linear(hidden_size, out_features),
+                        nn.BatchNorm1d(out_features)
                     )
-                    self.layer2 = nn.Sequential(
+                else:
+                    self.projector = nn.Sequential(
+                        nn.Linear(in_features, hidden_size),
+                        nn.BatchNorm1d(hidden_size),
+                        nn.ReLU(inplace=True),
                         nn.Linear(hidden_size, hidden_size),
                         nn.BatchNorm1d(hidden_size),
-                        nn.ReLU(inplace=True)
-                    )
-                    self.layer3 = nn.Sequential(
+                        nn.ReLU(inplace=True),
                         nn.Linear(hidden_size, out_features),
                         nn.BatchNorm1d(out_features)
                     )
             else:
                 if no_layers == 1:
-                    self.layer1 = nn.Sequential(
+                    self.projector = nn.Sequential(
                         nn.Linear(in_features, out_features, bias=True),
                         nn.LayerNorm(out_features, eps=layer_norm_eps)
                     )
-                else:
-                    self.layer1 = nn.Sequential(
+                elif no_layers == 2:
+                    self.projector = nn.Sequential(
                         nn.Linear(in_features, hidden_size),
                         nn.LayerNorm(hidden_size, eps=layer_norm_eps),
-                        nn.GELU(inplace=True)
+                        nn.GELU(),
+                        nn.Linear(hidden_size, out_features),
+                        nn.LayerNorm(out_features, eps=layer_norm_eps)
                     )
-                    self.layer2 = nn.Sequential(
+                else:
+                    self.projector = nn.Sequential(
+                        nn.Linear(in_features, hidden_size),
+                        nn.LayerNorm(hidden_size, eps=layer_norm_eps),
+                        nn.GELU(),
                         nn.Linear(hidden_size, hidden_size),
                         nn.LayerNorm(hidden_size, eps=layer_norm_eps),
-                        nn.GELU(inplace=True)
-                    )
-                    self.layer3 = nn.Sequential(
+                        nn.GELU(),
                         nn.Linear(hidden_size, out_features),
                         nn.LayerNorm(out_features, eps=layer_norm_eps)
                     )
                 
     def forward(self, x):
-        if self.no_layers == 3:
-            x = self.layer1(x)
-            x = self.layer2(x)
-            x = self.layer3(x)
-        elif self.no_layers == 2:
-            x = self.layer1(x)
-            x = self.layer3(x)
-        elif self.no_layers == 1:
-            x = self.layer1(x)    
-        return x
+        return self.projector(x)
         
 
 class PredictionMLPHead(nn.Module):
@@ -132,24 +131,3 @@ class LWContrastiveHead(nn.Module):
             
         loss = self.criterion(F.normalize(z, dim=2))
         return loss
-    
-    
-class SimContrastiveHead(nn.Module):
-    def __init__(self, in_features: int, out_features: int, 
-                hidden_size: int, no_layers: int = 2, 
-                bn_proj: bool = False, temp: float = 0.5):
-        super(SimContrastiveHead, self).__init__()
-        
-        self.projector = ProjectionMLPHead(batch_norm=bn_proj, no_layers=no_layers,
-                            in_features=in_features, hidden_size=hidden_size, out_features=out_features)
-        
-        self.criterion = NT_XentSimCLR(temp=temp)
-        
-    def forward(self, h_i, h_j):
-        z_i = self.projector(h_i)
-        z_j = self.projector(h_j)
-        
-        loss = self.criterion(z_i, z_j)
-        return loss
-    
-        

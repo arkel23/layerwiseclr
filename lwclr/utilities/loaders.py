@@ -16,7 +16,7 @@ def ret_args(ret_parser=False):
     parser.add_argument('--mode', type=str, 
                         choices=['simclr', 'lwclr_full_mult', 'lwclr_full_single', 
                             'lwclr_cont_mult', 'lwclr_cont_single', 'linear_eval', 'fine_tuning'],
-                        default='simlwclr', help='Framework for training and evaluation')
+                        default='simclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
     parser.add_argument('--no_cpu_workers', type=int, default=4, help='CPU workers for data loading.')
@@ -48,8 +48,9 @@ def ret_args(ret_parser=False):
         return parser
     args = parser.parse_args()
 
-    args.run_name = '{}_layers{}_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
-        args.mode, args.cont_layers_range, args.dataset_name, args.model_name, args.image_size, args.batch_size, 
+    args.run_name = '{}_{}projlayersbn{}_{}contlayers_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
+        args.mode, args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
+        args.dataset_name, args.model_name, args.image_size, args.batch_size, 
         args.optimizer, args.learning_rate, args.weight_decay, args.seed)
 
     if args.deit_recipe:
