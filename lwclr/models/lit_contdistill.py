@@ -65,12 +65,12 @@ class LitContDistill(pl.LightningModule):
         return loss
 
     def cont_distill_multi(self, interm_feats_teacher, feats_student):
-        feats_teacher = interm_feats_teacher[-self.args.cont_layers_range:]
+        interm_feats_teacher = interm_feats_teacher[-self.args.cont_layers_range:]
         
         if self.distill:
-            z_teacher = [self.projector_teacher(feats.detach()) for feats in feats_teacher]
+            z_teacher = [self.projector_teacher(feats.detach()) for feats in interm_feats_teacher]
         else:
-            z_teacher = [self.projector(feats.detach()) for feats in feats_teacher]
+            z_teacher = [self.projector(feats.detach()) for feats in interm_feats_teacher]
         z_student = self.projector(feats_student)
         
         z = torch.cat([z_student.unsqueeze(1), torch.stack(z_teacher, dim=1)], dim=1)        

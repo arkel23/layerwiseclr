@@ -61,7 +61,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
     def to_device(self, batch: Sequence, device: Union[str, device]) -> Tuple[Tensor, Tensor]:
         inputs, y = batch
 
-        if self.mode in ['simclr',]:
+        if self.mode in ['simclr', 'simlwclr']:
             x = inputs[0]
             x = x.to(device)
             y = y.to(device)
