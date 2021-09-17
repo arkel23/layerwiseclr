@@ -7,7 +7,7 @@ from torchmetrics.functional import accuracy
 
 from .heads import ProjectionMLPHead
 from .model_selection import load_model
-from .scheduler import WarmupCosineSchedule
+from .optim_utils import WarmupCosineSchedule, create_optim
 
 def freeze_layers(model):
     for param in model.parameters():
@@ -65,13 +65,8 @@ class LitEvaluator(pl.LightningModule):
         self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)
 
     def configure_optimizers(self):
-        if self.args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(self.parameters(), 
-            lr=self.args.learning_rate, weight_decay=self.args.weight_decay)  
-        else: 
-            optimizer = torch.optim.SGD(self.parameters(), lr=self.args.learning_rate, 
-            momentum=0.9, weight_decay=self.args.weight_decay)
-
+        optimizer = create_optim(self, self.args)
+        
         scheduler = {'scheduler': WarmupCosineSchedule(
         optimizer, warmup_steps=self.args.warmup_steps, 
         t_total=self.args.total_steps),

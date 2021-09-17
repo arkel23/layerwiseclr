@@ -1,6 +1,7 @@
 import math
 
 from torch.optim.lr_scheduler import LambdaLR
+from timm.optim import create_optimizer_v2
 
 class WarmupCosineSchedule(LambdaLR):
     """ Linear warmup and then cosine decay.
@@ -20,4 +21,9 @@ class WarmupCosineSchedule(LambdaLR):
         # progress after warmup
         progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
         return max(0.0, 0.5 * (1. + math.cos(math.pi * float(self.cycles) * 2.0 * progress)))
+    
 
+def create_optim(model, args):
+    optimizer = create_optimizer_v2(model, args.optimizer, 
+                    args.learning_rate, weight_decay=args.weight_decay, filter_bias_and_bn=True)
+    return optimizer

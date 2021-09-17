@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from .heads import ProjectionMLPHead
 from .custom_losses import SupConLoss
 from .model_selection import load_model
-from .scheduler import WarmupCosineSchedule
+from .optim_utils import WarmupCosineSchedule, create_optim
 
 class LitLWCLR(pl.LightningModule):
     
@@ -56,13 +56,8 @@ class LitLWCLR(pl.LightningModule):
         return loss
         
     def configure_optimizers(self):
-        if self.args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(self.parameters(), 
-            lr=self.args.learning_rate, weight_decay=self.args.weight_decay)  
-        else: 
-            optimizer = torch.optim.SGD(self.parameters(), lr=self.args.learning_rate, 
-            momentum=0.9, weight_decay=self.args.weight_decay)
-
+        optimizer = create_optim(self, self.args)
+        
         scheduler = {'scheduler': WarmupCosineSchedule(
         optimizer, warmup_steps=self.args.warmup_steps, 
         t_total=self.args.total_steps),
