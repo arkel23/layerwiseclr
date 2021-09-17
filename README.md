@@ -12,34 +12,24 @@ Train a SimCLR model on CIFAR10, image size=128, batch size=128, for 300 epochs 
 python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode simclr --batch_size 128 --save_checkpoint_freq 50
 ```
 
-Train a LWCLR twin model with full supervision with batch size=128, with contrast between the last layer of both models and all previous settings:
-```
-python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_full_single --batch_size 128 --save_checkpoint_freq 50
-```
-
-Train a LWCLR twin model with SimCLR contrastive supervision for auxiliary model with batch size=64, with contrast between the last layer of both models and all previous settings:
-```
-python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode lwclr_cont_single --batch_size 64 --save_checkpoint_freq 50
-```
-
 ## Description of models
 ### SimCLR
 Takes two augmentations from same image for positive pairs, and other images in batch for negative pairs.
 
-### LWCLR
-Trains two models, each with their independent weights, but same architecture, one called auxiliary or generator, and the other called discriminator. Auxiliary is trained either using full supervision or contrastive similar to SimCLR, and it provides representations from either the last layer or from any intermediate layer, to contrast against the discriminator, which learns through a contrastive loss from its feature map from the last layer of either the same image, or a different augmentation of the same image.
-
 ## Full list of arguments
 ```
-usage: train.py [-h] [--mode {simclr,lwclr_full_all,lwclr_full_single,lwclr_cont_all,lwclr_cont_single,linear_eval,fine_tuning}]
-                [--seed SEED] [--no_cpu_workers NO_CPU_WORKERS] [--results_dir RESULTS_DIR]
-                [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ] [--dataset_name {cifar10,cifar100,imagenet}]
-                [--dataset_path DATASET_PATH] [--deit_recipe] [--image_size IMAGE_SIZE] [--batch_size BATCH_SIZE]
-                [--temperature TEMPERATURE] [--optimizer {sgd,adam}] [--learning_rate LEARNING_RATE] [--weight_decay WEIGHT_DECAY]
-                [--warmup_steps WARMUP_STEPS] [--warmup_epochs WARMUP_EPOCHS]
-                [--model_name {B_16,B_32,L_16,L_32,effnet_b0,resnet18,resnet50}] [--vit_avg_pooling] [--no_proj_layers {1,2,3}]
-                [--layer_contrast LAYER_CONTRAST] [--random_layer_contrast] [--fs_weight FS_WEIGHT] [--pl_weight PL_WEIGHT]
-                [--cont_weight CONT_WEIGHT] [--pretrained_checkpoint] [--checkpoint_path CHECKPOINT_PATH] [--transfer_learning]
+usage: train.py [-h] [--mode {simclr,simlwclr,lwclr,cont_distill_singlecont_distill_multi,linear_eval,fine_tuning}] [--seed SEED]
+                [--no_cpu_workers NO_CPU_WORKERS] [--results_dir RESULTS_DIR] [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ]
+                [--dataset_name {cifar10,cifar100,imagenet,danboorufaces,danboorufull}] [--dataset_path DATASET_PATH] [--deit_recipe]
+                [--image_size IMAGE_SIZE] [--batch_size BATCH_SIZE] [--temperature TEMPERATURE] [--optimizer {sgd,adam}]
+                [--learning_rate LEARNING_RATE] [--weight_decay WEIGHT_DECAY] [--warmup_steps WARMUP_STEPS]
+                [--warmup_epochs WARMUP_EPOCHS]
+                [--model_name {Ti_4,Ti_8,Ti_16,Ti_32,S_4,S_8,S_16,S_32,B_4,B_8,B_16,B_32,L_16,L_32,B_16_in1k,effnet_b0,resnet18,resnet50,alexnet}]
+                [--vit_avg_pooling] [--model_name_teacher MODEL_NAME_TEACHER] [--layer_contrast LAYER_CONTRAST]
+                [--random_layer_contrast] [--cont_layers_range CONT_LAYERS_RANGE] [--freeze_teacher] [--bn_proj]
+                [--no_proj_layers {1,2,3}] [--projector_hidden_size PROJECTOR_HIDDEN_SIZE]
+                [--projector_output_size PROJECTOR_OUTPUT_SIZE] [--fs_weight FS_WEIGHT] [--pl_weight PL_WEIGHT]
+                [--cont_weight CONT_WEIGHT] [--pretrained_teacher] [--checkpoint_path CHECKPOINT_PATH] [--transfer_learning]
                 [--load_partial_mode {full_tokenizer,patchprojection,posembeddings,clstoken,patchandposembeddings,patchandclstoken,posembeddingsandclstoken,None}]
                 [--interm_features_fc] [--conv_patching] [--logger [LOGGER]] [--checkpoint_callback [CHECKPOINT_CALLBACK]]
                 [--default_root_dir DEFAULT_ROOT_DIR] [--gradient_clip_val GRADIENT_CLIP_VAL]
@@ -67,7 +57,7 @@ usage: train.py [-h] [--mode {simclr,lwclr_full_all,lwclr_full_single,lwclr_cont
 
 optional arguments:
   -h, --help            show this help message and exit
-  --mode {simclr,lwclr_full_all,lwclr_full_single,lwclr_cont_all,lwclr_cont_single,linear_eval,fine_tuning}
+  --mode {simclr,simlwclr,lwclr,cont_distill_singlecont_distill_multi,linear_eval,fine_tuning}
                         Framework for training and evaluation
   --seed SEED           random seed for initialization
   --no_cpu_workers NO_CPU_WORKERS
@@ -76,7 +66,7 @@ optional arguments:
                         The directory where results will be stored
   --save_checkpoint_freq SAVE_CHECKPOINT_FREQ
                         Frequency (in epochs) to save checkpoints
-  --dataset_name {cifar10,cifar100,imagenet}
+  --dataset_name {cifar10,cifar100,imagenet,danboorufaces,danboorufull}
                         Which dataset to use.
   --dataset_path DATASET_PATH
                         Path for the dataset.
@@ -95,23 +85,32 @@ optional arguments:
                         Warmup steps for LR scheduler.
   --warmup_epochs WARMUP_EPOCHS
                         If doing warmup in terms of epochs instead of steps.
-  --model_name {B_16,B_32,L_16,L_32,effnet_b0,resnet18,resnet50}
+  --model_name {Ti_4,Ti_8,Ti_16,Ti_32,S_4,S_8,S_16,S_32,B_4,B_8,B_16,B_32,L_16,L_32,B_16_in1k,effnet_b0,resnet18,resnet50,alexnet}
                         Which model architecture to use
   --vit_avg_pooling     If use this flag then uses average pooling instead of cls token of ViT
-  --no_proj_layers {1,2,3}
-                        Number of layers for projection head.
+  --model_name_teacher MODEL_NAME_TEACHER
+                        By default uses same architecture as main network, but can choose any other
   --layer_contrast LAYER_CONTRAST
                         Layer features for pairs
   --random_layer_contrast
                         If use this flag then at each step chooses a random layer from gen to contrast against
+  --cont_layers_range CONT_LAYERS_RANGE
+                        Choose which last N layers to contrast from (def last 2 layers).
+  --freeze_teacher      If use this flag then freeze teacher network
+  --bn_proj             If use this flag then uses projector MLP with BN instead of LN
+  --no_proj_layers {1,2,3}
+                        Number of layers for projection head.
+  --projector_hidden_size PROJECTOR_HIDDEN_SIZE
+                        Number of units in hidden layer of MLP projector
+  --projector_output_size PROJECTOR_OUTPUT_SIZE
+                        Number of units in output layer of MLP projector
   --fs_weight FS_WEIGHT
                         Weight for fully supervised loss
   --pl_weight PL_WEIGHT
                         Wegith for layer-wise pseudolabels loss
   --cont_weight CONT_WEIGHT
                         Weight for contrastive loss
-  --pretrained_checkpoint
-                        Loads pretrained model if available
+  --pretrained_teacher  Loads pretrained model if available
   --checkpoint_path CHECKPOINT_PATH
   --transfer_learning   Load partial state dict for transfer learningResets the [embeddings, logits and] fc layer for ViT
   --load_partial_mode {full_tokenizer,patchprojection,posembeddings,clstoken,patchandposembeddings,patchandclstoken,posembeddingsandclstoken,None}

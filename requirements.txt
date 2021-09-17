@@ -1,8 +1,11 @@
 # pytorch, torchvision, numpy, pandas
+# requires latest pytorch and torchvision (nightly)
+# since those include the torchvision.models.feature_extraction components for cnns 
+# conda install -c pytorch-nightly pytorch torchvision
 # install first https://github.com/arkel23/PyTorch-Pretrained-ViT 
 einops==0.3.0
-pytorch-lightning==1.4.2
+pytorch-lightning==1.4.4
 transformers==4.9.1
 wandb==0.11.2
-timm==0.4.9
+timm==0.4.12
 efficientnet-pytorch==0.7.1
