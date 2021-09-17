@@ -18,7 +18,7 @@ Takes two augmentations from same image for positive pairs, and other images in 
 
 ## Full list of arguments
 ```
-usage: train.py [-h] [--mode {simclr,simlwclr,lwclr,cont_distill_singlecont_distill_multi,linear_eval,fine_tuning}] [--seed SEED]
+usage: train.py [-h] [--mode {simclr,simlwclr,lwclr,cont_distill_single,cont_distill_multi,linear_eval,fine_tuning}] [--seed SEED]
                 [--no_cpu_workers NO_CPU_WORKERS] [--results_dir RESULTS_DIR] [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ]
                 [--dataset_name {cifar10,cifar100,imagenet,danboorufaces,danboorufull}] [--dataset_path DATASET_PATH] [--deit_recipe]
                 [--image_size IMAGE_SIZE] [--batch_size BATCH_SIZE] [--temperature TEMPERATURE] [--optimizer {sgd,adam}]

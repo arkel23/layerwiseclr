@@ -14,7 +14,7 @@ def ret_args(ret_parser=False):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, 
-                        choices=['simclr', 'simlwclr', 'lwclr', 'cont_distill_single' 'cont_distill_multi', 
+                        choices=['simclr', 'simlwclr', 'lwclr', 'cont_distill_single', 'cont_distill_multi', 
                                  'linear_eval', 'fine_tuning'],
                         default='simclr', help='Framework for training and evaluation')
 
