@@ -1,3 +1,4 @@
+# https://github.com/PatrickHua/SimSiam/issues/3#issuecomment-751125658
 # https://github.com/huyvnphan/PyTorch_CIFAR10/blob/master/cifar10_models/resnet.py
 import torch
 import torch.nn as nn
