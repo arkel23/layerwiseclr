@@ -1,3 +1,4 @@
+# https://github.com/huyvnphan/PyTorch_CIFAR10/blob/master/cifar10_models/resnet.py
 import torch
 import torch.nn as nn
 import os
