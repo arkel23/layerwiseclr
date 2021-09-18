@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from torchmetrics.functional import accuracy
 
 from .heads import ProjectionMLPHead
 from .custom_losses import SupConLoss
@@ -61,7 +62,7 @@ class LitContDistill(pl.LightningModule):
         z_student = self.projector(feats_student)
         
         z = torch.cat([z_student.unsqueeze(1), z_teacher.unsqueeze(1)], dim=1)
-        loss = self.criterion_student(F.Normalize(z, dim=2))
+        loss = self.criterion_student(F.normalize(z, dim=2))
         return loss
 
     def cont_distill_multi(self, interm_feats_teacher, feats_student):
@@ -86,33 +87,37 @@ class LitContDistill(pl.LightningModule):
         # loss for teacher network
         logits = self.cls_head(interm_feats_teacher[-1])
         loss_teacher = self.criterion_teacher(logits, y)
-        
+        teacher_acc = accuracy(logits.softmax(-1), y)
+
         # loss for student network
         if self.args.mode == 'cont_distill_single':
             loss = self.cont_distill_single(interm_feats_teacher, feats_student)    
         else:
             loss = self.cont_distill_multi(interm_feats_teacher, feats_student)
         
-        return loss, loss_teacher             
+        return loss, loss_teacher, teacher_acc 
 
     def training_step(self, batch, batch_idx):
-        loss, loss_teacher = self.shared_step(batch)    
+        loss, loss_teacher, teacher_acc = self.shared_step(batch)    
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         self.log('train_loss_teacher', loss_teacher, on_epoch=True, on_step=False)
-        
+        self.log('train_acc_teacher', teacher_acc, on_epoch=True, on_step=False)
+
         return loss + loss_teacher
 
     def validation_step(self, batch, batch_idx):
-        loss, loss_teacher = self.shared_step(batch) 
+        loss, loss_teacher, teacher_acc = self.shared_step(batch) 
         self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
         self.log('val_loss_teacher', loss_teacher, on_epoch=True, on_step=False, sync_dist=True)
+        self.log('val_acc_teacher', teacher_acc, on_epoch=True, on_step=False, sync_dist=True)
         
         return loss + loss_teacher
 
     def test_step(self, batch, batch_idx):
-        loss, loss_teacher = self.shared_step(batch) 
+        loss, loss_teacher, teacher_acc = self.shared_step(batch) 
         self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
         self.log('test_loss_teacher', loss_teacher, on_epoch=True, on_step=False, sync_dist=True)
+        self.log('test_acc_teacher', teacher_acc, on_epoch=True, on_step=False, sync_dist=True)
         
         return loss + loss_teacher
 
