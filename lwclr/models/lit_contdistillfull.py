@@ -11,7 +11,7 @@ from .model_selection import load_model
 from .lit_evaluator import freeze_layers
 from .optim_utils import WarmupCosineSchedule, create_optim
         
-class LitContDistill(pl.LightningModule):
+class LitContDistillFull(pl.LightningModule):
     def __init__(self, args):
         super().__init__()
         self.args = args
@@ -37,16 +37,18 @@ class LitContDistill(pl.LightningModule):
                             in_features=in_features_teacher, hidden_size=hidden_size, out_features=out_features)
         
         self.cls_head = ProjectionMLPHead(linear=True, no_layers=1, 
+                in_features=in_features, out_features=args.num_classes)
+        self.cls_head_teacher = ProjectionMLPHead(linear=True, no_layers=1, 
                 in_features=in_features_teacher, out_features=args.num_classes)
 
-        self.criterion_teacher = nn.CrossEntropyLoss()
+        self.criterion_cls = nn.CrossEntropyLoss()
         self.criterion_student = SupConLoss(
             temperature=args.temperature, base_temperature=args.temperature, contrast_mode='all')
            
     def forward(self, x):
         return self.backbone(x)
 
-    def cont_distill_single(self, interm_feats_teacher, feats_student):
+    def cont_distill_full_single(self, interm_feats_teacher, feats_student):
         if self.args.random_layer_contrast:
             last_layer = self.backbone.configuration.num_hidden_layers - 1
             feats_teacher = interm_feats_teacher[
@@ -58,18 +60,18 @@ class LitContDistill(pl.LightningModule):
         z_student = self.projector(feats_student)
         
         z = torch.cat([z_student.unsqueeze(1), z_teacher.unsqueeze(1)], dim=1)
-        loss = self.criterion_student(F.normalize(z, dim=2))
-        return loss
+        loss_cont = self.criterion_student(F.normalize(z, dim=2))
+        return loss_cont
 
-    def cont_distill_multi(self, interm_feats_teacher, feats_student):
+    def cont_distill_full_multi(self, interm_feats_teacher, feats_student):
         interm_feats_teacher = interm_feats_teacher[-self.args.cont_layers_range:]
         
         z_teacher = [self.projector_teacher(feats.detach()) for feats in interm_feats_teacher]
         z_student = self.projector(feats_student)
         
         z = torch.cat([z_student.unsqueeze(1), torch.stack(z_teacher, dim=1)], dim=1)        
-        loss = self.criterion_student(F.normalize(z, dim=2))
-        return loss
+        loss_cont = self.criterion_student(F.normalize(z, dim=2))
+        return loss_cont
         
     def shared_step(self, batch):
         x, y = batch
@@ -78,40 +80,49 @@ class LitContDistill(pl.LightningModule):
         feats_student = self.backbone(x)
         
         # loss for teacher network
-        logits = self.cls_head(interm_feats_teacher[-1])
-        loss_teacher = self.criterion_teacher(logits, y)
-        teacher_acc = accuracy(logits.softmax(-1), y)
+        logits_teacher = self.cls_head_teacher(interm_feats_teacher[-1])
+        loss_teacher = self.criterion_cls(logits_teacher, y)
+        teacher_acc = accuracy(logits_teacher.softmax(-1), y)
 
         # loss for student network
-        if self.args.mode == 'cont_distill_single':
-            loss = self.cont_distill_single(interm_feats_teacher, feats_student)    
+        if self.args.mode == 'cont_distill_full_single':
+            loss_cont = self.cont_distill_single(interm_feats_teacher, feats_student)    
         else:
-            loss = self.cont_distill_multi(interm_feats_teacher, feats_student)
+            loss_cont = self.cont_distill_multi(interm_feats_teacher, feats_student)
         
-        return loss, loss_teacher, teacher_acc 
+        logits = self.cls_head(feats_student)
+        loss_fs = self.criterion_cls(logits, y)
+        acc = accuracy(logits.softmax(-1), y)
+
+        loss = (self.args.fs_weight * loss_fs) + (self.args.cont_weight * loss_cont)
+
+        return loss, loss_teacher, acc, teacher_acc 
 
     def training_step(self, batch, batch_idx):
-        loss, loss_teacher, teacher_acc = self.shared_step(batch)    
+        loss, loss_teacher, acc, teacher_acc = self.shared_step(batch)    
+        
         self.log('train_loss', loss, on_epoch=True, on_step=True)
-        self.log('train_loss_teacher', loss_teacher, on_epoch=True, on_step=False)
-        self.log('train_acc_teacher', teacher_acc, on_epoch=True, on_step=False)
+        metrics = {'train_acc': acc, 'train_acc_teacher': teacher_acc, 'train_loss_teacher': loss_teacher}
+        self.log_dict(metrics, on_epoch=True, on_step=False)
 
         return loss + loss_teacher
 
     def validation_step(self, batch, batch_idx):
-        loss, loss_teacher, teacher_acc = self.shared_step(batch) 
-        self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('val_loss_teacher', loss_teacher, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('val_acc_teacher', teacher_acc, on_epoch=True, on_step=False, sync_dist=True)
+        loss, loss_teacher, acc, teacher_acc = self.shared_step(batch)    
         
+        self.log('val_loss', loss, on_epoch=True, on_step=True)
+        metrics = {'val_acc': acc, 'val_acc_teacher': teacher_acc, 'val_loss_teacher': loss_teacher}
+        self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)
+
         return loss + loss_teacher
 
     def test_step(self, batch, batch_idx):
-        loss, loss_teacher, teacher_acc = self.shared_step(batch) 
-        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('test_loss_teacher', loss_teacher, on_epoch=True, on_step=False, sync_dist=True)
-        self.log('test_acc_teacher', teacher_acc, on_epoch=True, on_step=False, sync_dist=True)
+        loss, loss_teacher, acc, teacher_acc = self.shared_step(batch)    
         
+        self.log('test_loss', loss, on_epoch=True, on_step=True)
+        metrics = {'test_acc': acc, 'test_acc_teacher': teacher_acc, 'test_loss_teacher': loss_teacher}
+        self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)
+
         return loss + loss_teacher
 
     def configure_optimizers(self):
