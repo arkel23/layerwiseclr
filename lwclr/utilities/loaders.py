@@ -15,7 +15,7 @@ def ret_args(ret_parser=False):
 
     parser.add_argument('--mode', type=str, 
                         choices=['simclr', 'simlwclr', 'lwclr', 'cont_distill_single', 'cont_distill_multi', 
-                                 'linear_eval', 'fine_tuning'],
+                                 'cont_distill_full_single', 'cont_distill_full_multi', 'linear_eval', 'fine_tuning'],
                         default='simclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
@@ -88,7 +88,7 @@ def load_trainer(args, model, wandb_logger):
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
-    if args.mode not in ['linear_eval', 'fine_tuning']:
+    if args.mode not in ['linear_eval', 'fine_tuning', 'cont_distill_full_single', 'cont_distill_full_multi']:
         online_eval_callback = models.SSLOnlineLinearEvaluator(
             mode=args.mode, z_dim=model.backbone.configuration.hidden_size, 
             num_classes=args.num_classes, lr=args.learning_rate)
@@ -104,6 +104,8 @@ def load_plmodel(args):
     if args.mode == 'simclr':
         model = models.LitSimCLR(args)
     elif args.mode in ['cont_distill_single', 'cont_distill_multi']:
+        model = models.LitContDistill(args)
+    elif args.mode in ['cont_distill_full_single', 'cont_distill_full_multi']:
         model = models.LitContDistill(args)
     elif args.mode == 'lwclr':
         model = models.LitLWCLR(args)
