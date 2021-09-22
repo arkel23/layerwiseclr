@@ -58,10 +58,10 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         representations = representations.reshape(representations.size(0), -1)
         return representations
 
-    def to_device(self, batch: Sequence, device: Union[str, device]) -> Tuple[Tensor, Tensor]:
+    def to_device(self, test: bool, batch: Sequence, device: Union[str, device]) -> Tuple[Tensor, Tensor]:
         inputs, y = batch
 
-        if self.mode in ['simclr', 'simlwclr']:
+        if self.mode in ['simclr', 'simlwclr'] and (not test):
             x = inputs[0]
             x = x.to(device)
             y = y.to(device)
@@ -80,7 +80,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x, y = self.to_device(batch, pl_module.device)
+        x, y = self.to_device(test=False, batch=batch, device=pl_module.device)
 
         with torch.no_grad():
             representations = self.get_representations(pl_module, x)
@@ -110,7 +110,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x, y = self.to_device(batch, pl_module.device)
+        x, y = self.to_device(test=False, batch=batch, device=pl_module.device)
 
         with torch.no_grad():
             representations = self.get_representations(pl_module, x)
@@ -137,7 +137,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x, y = self.to_device(batch, pl_module.device)
+        x, y = self.to_device(test=True, batch=batch, device=pl_module.device)
 
         with torch.no_grad():
             representations = self.get_representations(pl_module, x)

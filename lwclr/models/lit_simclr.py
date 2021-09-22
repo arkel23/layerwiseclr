@@ -3,11 +3,12 @@
 # https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/models/self_supervised/simclr/simclr_module.py
 from argparse import ArgumentParser
 import torch
+import torch.nn.functional as F
 import pytorch_lightning as pl
 
 from .heads import ProjectionMLPHead
 from .model_selection import load_model
-from .custom_losses import NT_XentSimCLR
+from .custom_losses import NT_XentSimCLR, SupConLoss
 from .optim_utils import WarmupCosineSchedule, create_optim
 
 class LitSimCLR(pl.LightningModule):
@@ -21,7 +22,9 @@ class LitSimCLR(pl.LightningModule):
                             in_features=self.backbone.configuration.hidden_size, 
                             hidden_size=args.projector_hidden_size, out_features=args.projector_output_size)
 
-        self.criterion = NT_XentSimCLR(temp=args.temperature)
+        #self.criterion = NT_XentSimCLR(temp=args.temperature)
+        self.criterion = SupConLoss(
+            temperature=args.temperature, base_temperature=args.temperature, contrast_mode='all')
         
     def forward(self, x_i):
         return self.backbone(x_i)
@@ -35,7 +38,9 @@ class LitSimCLR(pl.LightningModule):
         z_i = self.projector(h_i)
         z_j = self.projector(h_j)
         
-        loss = self.criterion(z_i, z_j)
+        z = torch.cat([z_i.unsqueeze(1), z_j.unsqueeze(1)], dim=1)
+        loss = self.criterion(F.normalize(z, dim=2))
+        #loss = self.criterion(z_i, z_j)
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -55,9 +60,33 @@ class LitSimCLR(pl.LightningModule):
         self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
         
         return loss
+    
+    def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=("bias", "bn")):
+        params = []
+        excluded_params = []
+
+        for name, param in named_params:
+            if not param.requires_grad:
+                continue
+            elif any(layer_name in name for layer_name in skip_list):
+                excluded_params.append(param)
+            else:
+                params.append(param)
+
+        return [{"params": params, "weight_decay": weight_decay}, {"params": excluded_params, "weight_decay": 0.0}]
 
     def configure_optimizers(self):
-        optimizer = create_optim(self, self.args)
+        #'''
+        params = self.exclude_from_wt_decay(self.named_parameters(), weight_decay=self.args.weight_decay)
+        
+        if self.args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(params, 
+            lr=self.args.learning_rate, weight_decay=self.args.weight_decay)  
+        else: 
+            optimizer = torch.optim.SGD(params, lr=self.args.learning_rate, 
+            momentum=0.9, weight_decay=self.args.weight_decay)
+        #'''
+        #optimizer = create_optim(self, self.args)
         
         scheduler = {'scheduler': WarmupCosineSchedule(
         optimizer, warmup_steps=self.args.warmup_steps, 

@@ -63,9 +63,9 @@ def ret_args(ret_parser=False):
             args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
             args.dataset_name, args.image_size, args.batch_size, 
             args.optimizer, args.learning_rate, args.weight_decay, args.seed)
-    elif args.mode in ['linear_eval' ,'fine_tuning']:
+    elif args.mode in ['linear_eval' ,'fine_tuning'] and args.checkpoint_path:
         args.run_name = '{}_ckpt{}'.format(
-            args.mode, os.path.basename(os.path.normpath(args.checkpoint_path)))
+            args.mode, os.path.basename(os.path.dirname(os.path.abspath(args.checkpoint_path))))
     else:
         args.run_name = '{}_{}projlayersbn{}_{}contlayers_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
             args.mode, args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
@@ -164,7 +164,7 @@ def return_prepared_dm(args):
     args.total_steps = total_steps
 
     if args.warmup_epochs:
-        args.warmup_steps = args.max_epochs * len(dm.train_dataloader())
+        args.warmup_steps = args.warmup_epochs * len(dm.train_dataloader())
     
     return dm
 

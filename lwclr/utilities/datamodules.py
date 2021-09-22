@@ -77,7 +77,11 @@ def simclr_transform(args):
             transforms.RandomHorizontalFlip(),  # with 0.5 probability
             transforms.RandomApply([color_jitter], p=0.8),
             transforms.RandomGrayscale(p=0.2),
+            transforms.RandomApply([transforms.GaussianBlur(kernel_size=args.image_size//20*2+1, sigma=(0.1, 2.0))], p=0.5),
+            # We blur the image 50% of the time using a Gaussian kernel. We randomly sample σ ∈ [0.1, 2.0], and the kernel size is set to be 10% of the image height/width.
             transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
         ])
         
     return transform
@@ -93,15 +97,15 @@ class ApplyTransform:
         self.split = split
         self.args = args
 
-        if args.mode in ['simclr', 'simlwclr']:
-            self.mode = 'simclr'
+        if args.mode in ['simclr', 'simlwclr'] and self.split == 'train':
+            self.mode = 'simclr_train'
         else:
             self.mode = 'default'
 
         self.transform = self.build_transform()
     
     def __call__(self, x):
-        if self.mode == 'simclr':
+        if self.mode == 'simclr_train':
             return self.transform(x), self.transform(x)
         else:
             return self.transform(x)
@@ -109,7 +113,7 @@ class ApplyTransform:
     def build_transform(self):
         if self.args.deit_recipe:
             transform = deit_transform(split=self.split, args=self.args)
-        elif self.mode == 'simclr' and self.split == 'train':
+        elif self.mode == 'simclr_train':
             transform = simclr_transform(args=self.args)
         else:
             transform = standard_transform(split=self.split, args=self.args)

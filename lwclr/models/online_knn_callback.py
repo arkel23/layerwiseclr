@@ -51,15 +51,16 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
         return representations
 
     def get_all_representations(
-        self,
+        self, split,
         pl_module: LightningModule,
         dataloader: DataLoader,
     ) -> Tuple[np.ndarray, np.ndarray]:
         all_representations = None
         ys = None
-
+        test = True if split == 'test' else False
+        
         for batch in dataloader:
-            x, y = self.to_device(batch, pl_module.device)
+            x, y = self.to_device(test=test, batch=batch, device=pl_module.device)
 
             with torch.no_grad():
                 representations = F.normalize(self.get_representations(pl_module, x), dim=1)
@@ -77,9 +78,12 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
         return all_representations.t().contiguous(), ys
         #return all_representations.cpu().numpy(), ys.cpu().numpy()  # type: ignore[union-attr]
     
-    def knn_monitor(self, pl_module, feature_bank, feature_labels, dataloader):
+    def knn_monitor(self, split, pl_module, feature_bank, feature_labels, dataloader):
         pl_module.eval()
+    
         total_top1, total_num = 0.0, 0
+        test = True if split == 'test' else False
+    
         with torch.no_grad():
             # loop test data to predict the label by weighted knn search
             #test_bar = tqdm(test_data_loader, desc='kNN', disable=hide_progress)
@@ -87,7 +91,7 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
             #    data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
             
             for batch in dataloader:
-                x, y = self.to_device(batch, pl_module.device)
+                x, y = self.to_device(test=test, batch=batch, device=pl_module.device)
                 
                 feature = F.normalize(pl_module(x), dim=1)
                 
@@ -120,12 +124,12 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
         pred_labels = pred_scores.argsort(dim=-1, descending=True)
         return pred_labels
 
-    def to_device(self, batch: torch.Tensor, device: Union[str, torch.device]) -> Tuple[torch.Tensor, torch.Tensor]:        
+    def to_device(self, test: bool, batch: torch.Tensor, device: Union[str, torch.device]) -> Tuple[torch.Tensor, torch.Tensor]:        
         #print(len(batch), batch)
         #print(len(batch))
         inputs, y = batch
 
-        if self.mode in ['simclr', 'simlwclr']:
+        if self.mode in ['simclr', 'simlwclr'] and (not test):
             x = inputs[0]
             x = x.to(device)
             y = y.to(device)
@@ -159,7 +163,7 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
         val_dataloader = pl_module.val_dataloader()
 
         representations_bank, y = self.get_all_representations(pl_module, val_dataloader)
-        val_acc = self.knn_monitor(pl_module, feature_bank=representations_bank, feature_labels=y, dataloader=val_dataloader)
+        val_acc = self.knn_monitor(split='val', pl_module=pl_module, feature_bank=representations_bank, feature_labels=y, dataloader=val_dataloader)
 
         # log metrics
         pl_module.log('online_knn_val_acc', val_acc, on_step=False, on_epoch=True, sync_dist=True)

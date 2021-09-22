@@ -188,8 +188,8 @@ class ResNet(nn.Module):
         model, return_nodes = self.select_model_nodes(model_name=args.model_name, pretrained=pretrained)
         self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
 
-        if not pretrained:
-            self.init_weights()
+        #if not pretrained:
+        #    self.init_weights()
         
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)
         final_dim = original_dimensions[-1]
@@ -216,15 +216,15 @@ class ResNet(nn.Module):
         self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
          
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
+    #@torch.no_grad()
+    #def init_weights(self):
+    #    def _init(m):
+    #        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+    #            nn.init.xavier_uniform_(m.weight)
+    #            if hasattr(m, 'bias') and m.bias is not None:
+    #                nn.init.normal_(m.bias, std=1e-6)
+    #        
+    #    self.apply(_init)
         
     def get_reduction_dims(self, image_size):
         img = torch.rand(2, 3, image_size, image_size)
