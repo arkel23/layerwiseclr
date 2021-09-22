@@ -31,15 +31,15 @@ class LitEvaluator(pl.LightningModule):
         in_features = self.backbone.configuration.hidden_size
         num_classes = self.backbone.configuration.num_classes
         
-        self.linear_head =  ProjectionMLPHead(
+        self.cls_head =  ProjectionMLPHead(
             linear=True, no_layers=1, in_features=in_features, out_features=num_classes)
 
     def forward(self, x):
-        return self.linear_head(self.backbone(x)[:, 0])
+        return self.cls_head(self.backbone(x))
 
     def shared_step(self, batch):
         x, y = batch
-        logits = self.linear_head(self.backbone(x)[:, 0])
+        logits = self.cls_head(self.backbone(x))
         
         loss = F.cross_entropy(logits, y)
         acc = accuracy(logits.softmax(-1), y)

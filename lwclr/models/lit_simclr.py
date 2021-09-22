@@ -91,6 +91,8 @@ class LitSimCLR(pl.LightningModule):
                             help='If use this flag then uses average pooling instead of cls token of ViT')
         parser.add_argument('--model_name_teacher', type=str, default=None, 
                             help='By default uses same architecture as main network, but can choose any other')
+        parser.add_argument('--knn_online', action='store_true',
+                            help='If use this flag then uses KNN online evaluator instead of linear')
         
         parser.add_argument('--layer_contrast', type=int, default=-1, 
                         help='Layer features for pairs')
@@ -101,7 +103,7 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--freeze_teacher', action='store_true',
                             help='If use this flag then freeze teacher network')
         parser.add_argument('--no_stop_gradient', action='store_true',
-                            help='If use this flag then no stop gradient (on SimLWCLR')
+                            help='If use this flag then no stop gradient (on SimLWCLR)')
         
         parser.add_argument('--bn_proj', action='store_true',
                             help='If use this flag then uses projector MLP with BN instead of LN')

@@ -31,6 +31,14 @@ def load_model(args, ret_interm_repr=True, pretrained=False, distill=False, ckpt
                 pretrained_mode=args.load_partial_mode, verbose=True)
         else:
             state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'))
+            
+            state_dict_cp = state_dict['state_dict'].copy()
+            for key in state_dict['state_dict'].keys():
+                if 'backbone' in key:
+                    state_dict_cp[key.replace('backbone.', '')] = state_dict_cp[key]
+                    del state_dict_cp[key]
+            state_dict = state_dict_cp
+            
             expected_missing_keys = []
             
             
@@ -239,7 +247,7 @@ class ResNet(nn.Module):
         # node_names for outputs after Conv2d+ReLU
         # train_nodes, eval_nodes = feature_extraction.get_graph_node_names(model)
         if model_name == 'cifar_resnet18':
-            cifar_resnet18(pretrained=pretrained, progress=True)
+            model = cifar_resnet18(pretrained=pretrained, progress=True)
             return_nodes = {
                 'layer3.0.relu': 'layerminus8',
                 'layer3.0.relu_1': 'layerminus7',

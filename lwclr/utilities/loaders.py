@@ -108,9 +108,13 @@ def load_trainer(args, model, wandb_logger):
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     if args.mode not in ['linear_eval', 'fine_tuning', 'cd_full_single', 'cd_full_multi']:
-        online_eval_callback = models.SSLOnlineLinearEvaluator(
-            mode=args.mode, z_dim=model.backbone.configuration.hidden_size, 
-            num_classes=args.num_classes, lr=args.learning_rate)
+        if args.knn_online:
+            online_eval_callback = models.KNNOnlineEvaluator(
+                mode=args.mode, num_classes=args.num_classes)
+        else:
+            online_eval_callback = models.SSLOnlineLinearEvaluator(
+                mode=args.mode, z_dim=model.backbone.configuration.hidden_size, 
+                num_classes=args.num_classes, lr=args.learning_rate)
         trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, lr_monitor, online_eval_callback])
     else:
         trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, lr_monitor])
