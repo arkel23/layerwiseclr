@@ -11,6 +11,10 @@ Train a SimCLR model on CIFAR10, image size=128, batch size=128, for 300 epochs 
 ```
 python train.py --gpus 1 --image_size 128 --dataset_path data --max_epochs 300 --dataset_name cifar10 --mode simclr --batch_size 128 --save_checkpoint_freq 50
 ```
+SimLWCLR with 4 contrastive layers on CIFAR10, IS=128, BS=256, for 30 epochs, using resnet32x4, 2 proj layers, bn_proj, adam optimizer with LR=1e-3:
+```
+python -u train.py --mode simlwclr --batch_size 256 --image_size 32 --max_epochs 30 --model_name resnet32x4 --no_proj_layers 2 --learning_rate 1e-3 --optimizer adam --bn_proj --cont_layers_range 4
+```
 
 ## Description of models
 ### SimCLR
@@ -18,15 +22,15 @@ Takes two augmentations from same image for positive pairs, and other images in 
 
 ## Full list of arguments
 ```
-usage: train.py [-h] [--mode {simclr,simlwclr,lwclr,cont_distill_single,cont_distill_multi,linear_eval,fine_tuning}] [--seed SEED]
-                [--no_cpu_workers NO_CPU_WORKERS] [--results_dir RESULTS_DIR] [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ]
-                [--dataset_name {cifar10,cifar100,imagenet,danboorufaces,danboorufull}] [--dataset_path DATASET_PATH] [--deit_recipe]
-                [--image_size IMAGE_SIZE] [--batch_size BATCH_SIZE] [--temperature TEMPERATURE] [--optimizer {sgd,adam}]
-                [--learning_rate LEARNING_RATE] [--weight_decay WEIGHT_DECAY] [--warmup_steps WARMUP_STEPS]
-                [--warmup_epochs WARMUP_EPOCHS]
-                [--model_name {Ti_4,Ti_8,Ti_16,Ti_32,S_4,S_8,S_16,S_32,B_4,B_8,B_16,B_32,L_16,L_32,B_16_in1k,effnet_b0,resnet18,resnet50,alexnet}]
+usage: train.py [-h] [--mode {simclr,simlwclr,lwclr,cd_single,cd_multi,cd_full_single,cd_full_multi,linear_eval,fine_tuning}]
+                [--seed SEED] [--no_cpu_workers NO_CPU_WORKERS] [--results_dir RESULTS_DIR]
+                [--save_checkpoint_freq SAVE_CHECKPOINT_FREQ] [--dataset_name {cifar10,cifar100,imagenet,danboorufaces,danboorufull}]
+                [--dataset_path DATASET_PATH] [--deit_recipe] [--image_size IMAGE_SIZE] [--batch_size BATCH_SIZE]
+                [--temperature TEMPERATURE] [--optimizer {sgd,adam}] [--learning_rate LEARNING_RATE] [--weight_decay WEIGHT_DECAY]
+                [--warmup_steps WARMUP_STEPS] [--warmup_epochs WARMUP_EPOCHS]
+                [--model_name {Ti_4,Ti_8,Ti_16,Ti_32,S_4,S_8,S_16,S_32,B_4,B_8,B_16,B_32,L_16,L_32,B_16_in1k,alexnet,resnet18,resnet50,cifar_resnet18,resnet20,resnet56,resnet110,resnet8x4,resnet32x4}]
                 [--vit_avg_pooling] [--model_name_teacher MODEL_NAME_TEACHER] [--layer_contrast LAYER_CONTRAST]
-                [--random_layer_contrast] [--cont_layers_range CONT_LAYERS_RANGE] [--freeze_teacher] [--bn_proj]
+                [--random_layer_contrast] [--cont_layers_range CONT_LAYERS_RANGE] [--freeze_teacher] [--no_stop_gradient] [--bn_proj]
                 [--no_proj_layers {1,2,3}] [--projector_hidden_size PROJECTOR_HIDDEN_SIZE]
                 [--projector_output_size PROJECTOR_OUTPUT_SIZE] [--fs_weight FS_WEIGHT] [--pl_weight PL_WEIGHT]
                 [--cont_weight CONT_WEIGHT] [--pretrained_teacher] [--checkpoint_path CHECKPOINT_PATH] [--transfer_learning]
@@ -57,7 +61,7 @@ usage: train.py [-h] [--mode {simclr,simlwclr,lwclr,cont_distill_single,cont_dis
 
 optional arguments:
   -h, --help            show this help message and exit
-  --mode {simclr,simlwclr,lwclr,cont_distill_singlecont_distill_multi,linear_eval,fine_tuning}
+  --mode {simclr,simlwclr,lwclr,cd_single,cd_multi,cd_full_single,cd_full_multi,linear_eval,fine_tuning}
                         Framework for training and evaluation
   --seed SEED           random seed for initialization
   --no_cpu_workers NO_CPU_WORKERS
@@ -85,7 +89,7 @@ optional arguments:
                         Warmup steps for LR scheduler.
   --warmup_epochs WARMUP_EPOCHS
                         If doing warmup in terms of epochs instead of steps.
-  --model_name {Ti_4,Ti_8,Ti_16,Ti_32,S_4,S_8,S_16,S_32,B_4,B_8,B_16,B_32,L_16,L_32,B_16_in1k,effnet_b0,resnet18,resnet50,alexnet}
+  --model_name {Ti_4,Ti_8,Ti_16,Ti_32,S_4,S_8,S_16,S_32,B_4,B_8,B_16,B_32,L_16,L_32,B_16_in1k,alexnet,resnet18,resnet50,cifar_resnet18,resnet20,resnet56,resnet110,resnet8x4,resnet32x4}
                         Which model architecture to use
   --vit_avg_pooling     If use this flag then uses average pooling instead of cls token of ViT
   --model_name_teacher MODEL_NAME_TEACHER
@@ -97,6 +101,7 @@ optional arguments:
   --cont_layers_range CONT_LAYERS_RANGE
                         Choose which last N layers to contrast from (def last 2 layers).
   --freeze_teacher      If use this flag then freeze teacher network
+  --no_stop_gradient    If use this flag then no stop gradient (on SimLWCLR
   --bn_proj             If use this flag then uses projector MLP with BN instead of LN
   --no_proj_layers {1,2,3}
                         Number of layers for projection head.
@@ -107,7 +112,7 @@ optional arguments:
   --fs_weight FS_WEIGHT
                         Weight for fully supervised loss
   --pl_weight PL_WEIGHT
-                        Wegith for layer-wise pseudolabels loss
+                        Weigth for layer-wise pseudolabels loss
   --cont_weight CONT_WEIGHT
                         Weight for contrastive loss
   --pretrained_teacher  Loads pretrained model if available

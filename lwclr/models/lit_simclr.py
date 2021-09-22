@@ -84,7 +84,8 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--model_name', 
                         choices=['Ti_4', 'Ti_8', 'Ti_16', 'Ti_32', 'S_4', 'S_8', 'S_16', 'S_32', 
                                  'B_4', 'B_8', 'B_16', 'B_32', 'L_16', 'L_32', 'B_16_in1k', 
-                                 'effnet_b0', 'resnet18', 'resnet50', 'cifar_resnet18', 'alexnet'], 
+                                 'alexnet', 'resnet18', 'resnet50', 'cifar_resnet18', 
+                                 'resnet20', 'resnet56', 'resnet110', 'resnet8x4', 'resnet32x4'], 
                         default='B_16_in1k', help='Which model architecture to use')
         parser.add_argument('--vit_avg_pooling', action='store_true',
                             help='If use this flag then uses average pooling instead of cls token of ViT')
@@ -99,6 +100,8 @@ class LitSimCLR(pl.LightningModule):
                         help='Choose which last N layers to contrast from (def last 2 layers).')
         parser.add_argument('--freeze_teacher', action='store_true',
                             help='If use this flag then freeze teacher network')
+        parser.add_argument('--no_stop_gradient', action='store_true',
+                            help='If use this flag then no stop gradient (on SimLWCLR')
         
         parser.add_argument('--bn_proj', action='store_true',
                             help='If use this flag then uses projector MLP with BN instead of LN')
@@ -112,7 +115,7 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--fs_weight', type=float, default=1, 
                         help='Weight for fully supervised loss')
         parser.add_argument('--pl_weight', type=float, default=1, 
-                        help='Wegith for layer-wise pseudolabels loss')
+                        help='Weigth for layer-wise pseudolabels loss')
         parser.add_argument('--cont_weight', type=float, default=1, 
                         help='Weight for contrastive loss')
 

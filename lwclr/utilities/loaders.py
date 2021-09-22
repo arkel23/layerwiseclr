@@ -14,8 +14,8 @@ def ret_args(ret_parser=False):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--mode', type=str, 
-                        choices=['simclr', 'simlwclr', 'lwclr', 'cont_distill_single', 'cont_distill_multi', 
-                                 'cont_distill_full_single', 'cont_distill_full_multi', 'linear_eval', 'fine_tuning'],
+                        choices=['simclr', 'simlwclr', 'lwclr', 'cd_single', 'cd_multi', 
+                                 'cd_full_single', 'cd_full_multi', 'linear_eval', 'fine_tuning'],
                         default='simclr', help='Framework for training and evaluation')
 
     parser.add_argument('--seed', type=int, default=0, help='random seed for initialization')
@@ -47,11 +47,30 @@ def ret_args(ret_parser=False):
     if ret_parser:
         return parser
     args = parser.parse_args()
-
-    args.run_name = '{}_{}projlayersbn{}_{}contlayers_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
-        args.mode, args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
-        args.dataset_name, args.model_name, args.image_size, args.batch_size, 
-        args.optimizer, args.learning_rate, args.weight_decay, args.seed)
+    
+    if args.mode == 'lwclr':
+        assert args.cont_layers_range >= 2, 'Need to contrast at least 2 layers'
+    
+    assert ((not args.pretrained_teacher) or (args.model_name_teacher not in ['cifar_resnet18', 'resnet20' 'resnet32', 'resnet56', 'resnet110', 'resnet8x4', 'resnet32x4'])), \
+        '{} does not have pretrained checkpoint'.format(args.model_name)
+    
+    if args.mode in ['cd_single', 'cd_full_single', 'simclr']:
+        args.cont_layers_range = 1
+    
+    if args.mode in ['cd_single', 'cd_multi', 'cd_full_single', 'cd_full_multi']:
+        args.run_name = '{}_{}teacher{}pt{}fz{}_{}projlbn{}_{}contl_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
+            args.mode, args.model_name, args.model_name_teacher, args.pretrained_teacher, args.freeze_teacher,
+            args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
+            args.dataset_name, args.image_size, args.batch_size, 
+            args.optimizer, args.learning_rate, args.weight_decay, args.seed)
+    elif args.mode in ['linear_eval' ,'fine_tuning']:
+        args.run_name = '{}_ckpt{}'.format(
+            args.mode, os.path.basename(os.path.normpath(args.checkpoint_path)))
+    else:
+        args.run_name = '{}_{}projlayersbn{}_{}contlayers_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
+            args.mode, args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
+            args.dataset_name, args.model_name, args.image_size, args.batch_size, 
+            args.optimizer, args.learning_rate, args.weight_decay, args.seed)
 
     if args.deit_recipe:
         ''' taken from DeiT paper
@@ -88,7 +107,7 @@ def load_trainer(args, model, wandb_logger):
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
-    if args.mode not in ['linear_eval', 'fine_tuning', 'cont_distill_full_single', 'cont_distill_full_multi']:
+    if args.mode not in ['linear_eval', 'fine_tuning', 'cd_full_single', 'cd_full_multi']:
         online_eval_callback = models.SSLOnlineLinearEvaluator(
             mode=args.mode, z_dim=model.backbone.configuration.hidden_size, 
             num_classes=args.num_classes, lr=args.learning_rate)
@@ -103,10 +122,10 @@ def load_trainer(args, model, wandb_logger):
 def load_plmodel(args):
     if args.mode == 'simclr':
         model = models.LitSimCLR(args)
-    elif args.mode in ['cont_distill_single', 'cont_distill_multi']:
+    elif args.mode in ['cd_single', 'cd_multi']:
         model = models.LitContDistill(args)
-    elif args.mode in ['cont_distill_full_single', 'cont_distill_full_multi']:
-        model = models.LitContDistill(args)
+    elif args.mode in ['cd_full_single', 'cd_full_multi']:
+        model = models.LitContDistillFull(args)
     elif args.mode == 'lwclr':
         model = models.LitLWCLR(args)
     elif args.mode == 'simlwclr':

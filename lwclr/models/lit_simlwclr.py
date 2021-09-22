@@ -1,7 +1,8 @@
 import torch
+import torch.nn.functional as F
 import pytorch_lightning as pl
 
-from .heads import ProjectionMLPHead
+from .heads import ProjectionMLPHead, MultiScaleToSingleScaleHead
 from .custom_losses import SupConLoss
 from .model_selection import load_model
 from .optim_utils import WarmupCosineSchedule, create_optim
@@ -16,15 +17,18 @@ class LitSimLWCLR(pl.LightningModule):
 
         self.backbone = load_model(args, ret_interm_repr=True)                
         
+        stop_gradient = not self.args.no_stop_gradient
+        self.rescaler = MultiScaleToSingleScaleHead(args, model=self.backbone, detach=stop_gradient)
+        
         self.projector = ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=args.no_proj_layers,
                             in_features=self.backbone.configuration.hidden_size, 
                             hidden_size=args.projector_hidden_size, out_features=args.projector_output_size)
         
-        self.criterion_student = SupConLoss(
+        self.criterion = SupConLoss(
             temperature=args.temperature, base_temperature=args.temperature, contrast_mode='all')
         
     def forward(self, x_i):
-        return self.backbone(x_i)
+        return self.backbone(x_i)[-1]
         
     def shared_step(self, batch):
         (x_i, x_j), _ = batch
@@ -33,11 +37,13 @@ class LitSimLWCLR(pl.LightningModule):
         z_i = self.projector(interm_feats_i[-1])
         
         interm_feats_j =  self.backbone(x_j)
+        interm_feats_j = self.rescaler(interm_feats_j)
         interm_feats_j = interm_feats_j[-self.args.cont_layers_range:]
-        z_j = [self.projector(feats.detach()) for feats in interm_feats_j]
+        #z_j = [self.projector(feats.detach()) for feats in interm_feats_j]
+        z_j = [self.projector(feats) for feats in interm_feats_j]
         
         z = torch.cat([z_i.unsqueeze(1), torch.stack(z_j, dim=1)], dim=1)
-        loss = self.criterion(z)
+        loss = self.criterion(F.normalize(z, dim=2))
         return loss
 
     def training_step(self, batch, batch_idx):

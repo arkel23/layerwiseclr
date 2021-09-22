@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torchmetrics.functional import accuracy
 
-from .heads import ProjectionMLPHead
+from .heads import ProjectionMLPHead, MultiScaleToSingleScaleHead
 from .custom_losses import SupConLoss
 from .model_selection import load_model
 from .lit_evaluator import freeze_layers
@@ -20,8 +20,8 @@ class LitContDistillFull(pl.LightningModule):
         # another for receiving and evaluating them
         # teacher can be different (controlled by --model_name_teacher arg)
         self.distill = True if args.model_name_teacher else False
-        self.backbone_teacher = load_model(args, ret_interm_repr=True, pretrained=args.pretrained_teacher, distill=self.distill)
         self.backbone = load_model(args, ret_interm_repr=False, pretrained=False)  
+        self.backbone_teacher = load_model(args, ret_interm_repr=True, pretrained=args.pretrained_teacher, distill=self.distill)
         
         if self.args.freeze_teacher:
             freeze_layers(self.backbone_teacher)             
@@ -31,6 +31,8 @@ class LitContDistillFull(pl.LightningModule):
         hidden_size = self.args.projector_hidden_size
         out_features = self.args.projector_output_size
         
+        self.rescaler = MultiScaleToSingleScaleHead(args, model=self.backbone_teacher, distill=self.distill)
+
         self.projector = ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=args.no_proj_layers,
                             in_features=in_features, hidden_size=hidden_size, out_features=out_features)
         self.projector_teacher = ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=args.no_proj_layers,
@@ -48,13 +50,13 @@ class LitContDistillFull(pl.LightningModule):
     def forward(self, x):
         return self.backbone(x)
 
-    def cont_distill_full_single(self, interm_feats_teacher, feats_student):
+    def cd_full_single(self, interm_feats_teacher, feats_student):
         if self.args.random_layer_contrast:
             last_layer = self.backbone.configuration.num_hidden_layers - 1
             feats_teacher = interm_feats_teacher[
-                random.randint(last_layer - self.args.cont_layers_range + 1, last_layer)].detach()
+                random.randint(last_layer - self.args.cont_layers_range + 1, last_layer)]#.detach()
         else:
-            feats_teacher = interm_feats_teacher[self.args.layer_contrast].detach()
+            feats_teacher = interm_feats_teacher[self.args.layer_contrast]#.detach()
         
         z_teacher = self.projector_teacher(feats_teacher)
         z_student = self.projector(feats_student)
@@ -63,10 +65,11 @@ class LitContDistillFull(pl.LightningModule):
         loss_cont = self.criterion_student(F.normalize(z, dim=2))
         return loss_cont
 
-    def cont_distill_full_multi(self, interm_feats_teacher, feats_student):
+    def cd_full_multi(self, interm_feats_teacher, feats_student):
         interm_feats_teacher = interm_feats_teacher[-self.args.cont_layers_range:]
         
-        z_teacher = [self.projector_teacher(feats.detach()) for feats in interm_feats_teacher]
+        #z_teacher = [self.projector_teacher(feats.detach()) for feats in interm_feats_teacher]
+        z_teacher = [self.projector_teacher(feats) for feats in interm_feats_teacher]
         z_student = self.projector(feats_student)
         
         z = torch.cat([z_student.unsqueeze(1), torch.stack(z_teacher, dim=1)], dim=1)        
@@ -85,10 +88,11 @@ class LitContDistillFull(pl.LightningModule):
         teacher_acc = accuracy(logits_teacher.softmax(-1), y)
 
         # loss for student network
-        if self.args.mode == 'cont_distill_full_single':
-            loss_cont = self.cont_distill_single(interm_feats_teacher, feats_student)    
+        interm_feats_teacher = self.rescaler(interm_feats_teacher)
+        if self.args.mode == 'cd_full_single':
+            loss_cont = self.cd_full_single(interm_feats_teacher, feats_student)    
         else:
-            loss_cont = self.cont_distill_multi(interm_feats_teacher, feats_student)
+            loss_cont = self.cd_full_multi(interm_feats_teacher, feats_student)
         
         logits = self.cls_head(feats_student)
         loss_fs = self.criterion_cls(logits, y)
@@ -110,8 +114,8 @@ class LitContDistillFull(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         loss, loss_teacher, acc, teacher_acc = self.shared_step(batch)    
         
-        self.log('val_loss', loss, on_epoch=True, on_step=True)
-        metrics = {'val_acc': acc, 'val_acc_teacher': teacher_acc, 'val_loss_teacher': loss_teacher}
+        metrics = {'val_acc': acc, 'val_acc_teacher': teacher_acc, 
+                   'val_loss': loss, 'val_loss_teacher': loss_teacher}
         self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)
 
         return loss + loss_teacher
@@ -119,8 +123,8 @@ class LitContDistillFull(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         loss, loss_teacher, acc, teacher_acc = self.shared_step(batch)    
         
-        self.log('test_loss', loss, on_epoch=True, on_step=True)
-        metrics = {'test_acc': acc, 'test_acc_teacher': teacher_acc, 'test_loss_teacher': loss_teacher}
+        metrics = {'test_acc': acc, 'test_acc_teacher': teacher_acc, 
+                   'test_loss': loss, 'test_loss_teacher': loss_teacher}
         self.log_dict(metrics, on_epoch=True, on_step=False, sync_dist=True)
 
         return loss + loss_teacher

@@ -23,7 +23,7 @@ class LitEvaluator(pl.LightningModule):
         super().__init__()
         self.args = args
 
-        self.backbone = load_model(args, ret_interm_repr=False)
+        self.backbone = load_model(args, ret_interm_repr=False, ckpt_path=args.checkpoint_path)
 
         if args.mode == 'linear_eval':
             freeze_layers(self.backbone)               

@@ -3,46 +3,38 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torchvision.models.feature_extraction as feature_extraction
-import einops
 from einops.layers.torch import Rearrange
 
-import timm
-from efficientnet_pytorch import EfficientNet
 from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 
-from .cifar_resnet import cifar_resnet18
+from .resnet_cifar import cifar_resnet18
+from .resnet_others import resnet20, resnet32, resnet56, resnet110, resnet8x4, resnet32x4
 
-def load_model(args, ret_interm_repr=True, pretrained=False, distill=False):
+def load_model(args, ret_interm_repr=True, pretrained=False, distill=False, ckpt_path=False):
     # initiates model and loss
     if distill and args.model_name_teacher:
         model_name = args.model_name_teacher
     else:
         model_name = args.model_name
             
-    if model_name == 'effnet_b0':
-        model = EfficientNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
-    elif model_name == 'alexnet':
+    if model_name == 'alexnet':
         model = AlexNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
-    elif model_name == 'cifar_resnet18':
-        model = CIFARResNet18(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
-    elif model_name == 'resnet18':
-        model = ResNet18(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
-    elif model_name == 'resnet50':
-        model = ResNet50(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     elif 'resnet' in model_name:
         model = ResNet(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     else:
         model = VisionTransformer(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     
-    if args.checkpoint_path:
+    if ckpt_path:
         if args.load_partial_mode:
-            model.model.load_partial(weights_path=args.checkpoint_path, 
+            model.model.load_partial(weights_path=ckpt_path, 
                 pretrained_image_size=model.configuration.pretrained_image_size, 
                 pretrained_mode=args.load_partial_mode, verbose=True)
         else:
-            state_dict = torch.load(args.checkpoint_path, map_location=torch.device('cpu'))
+            state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'))
             expected_missing_keys = []
-
+            
+            
+            '''
             load_patch_embedding = (
                 (model.configuration.num_channels==model.configuration.pretrained_num_channels) and
                 (not(args.conv_patching))
@@ -56,6 +48,7 @@ def load_model(args, ret_interm_repr=True, pretrained=False, distill=False):
                     
             if ('model.fc.weight' in state_dict and model.config.load_fc_layer):
                 expected_missing_keys += ['model.fc.weight', 'model.fc.bias']
+            '''
             
             for key in expected_missing_keys:
                 state_dict.pop(key)
@@ -105,118 +98,6 @@ class VisionTransformer(nn.Module):
             return self.pool(self.model(images, mask))
         return self.norm(self.model(images, mask)[:, 0])
 
-class EffNet(nn.Module):
-    def __init__(self, args, ret_interm_repr=True, pretrained=False):
-        super(EffNet, self).__init__()
-        
-        self.ret_interm_repr = ret_interm_repr
-        
-        if pretrained:
-            self.model = EfficientNet.from_pretrained('efficientnet-b0')
-        else:
-            self.model = EfficientNet.from_name('efficientnet-b0')
-
-        if not pretrained:
-            self.init_weights()
-        
-        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
-        final_dim = original_dimensions[-1]
-        
-        if self.ret_interm_repr:
-            self.reshaping_head = nn.ModuleList([
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c'),
-                    nn.Linear(original_dim, final_dim)
-                ) 
-            for original_dim in original_dimensions])
-        else:
-            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c')
-            )
-        
-        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
-        self.configuration = Config(hidden_size=final_dim, 
-                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
-
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
-        nn.init.constant_(self.model._fc.weight, 0)
-        nn.init.constant_(self.model._fc.bias, 0)
-    
-    def get_reduction_dims(self, image_size):
-        img = torch.rand(2, 3, image_size, image_size)
-        features = self.model.extract_endpoints(img)
-        dims = [layer_output.size(1) for layer_output in features.values()]
-        return dims
-        
-    def forward(self, x):
-        if self.ret_interm_repr:
-            interm_features = self.model.extract_endpoints(x).values()
-            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        return self.reshaping_head(self.model.extract_features(x))
-
-
-class ResNet(nn.Module):
-    def __init__(self, args, ret_interm_repr=True, pretrained=False):
-        super(ResNet, self).__init__()
-        
-        self.ret_interm_repr = ret_interm_repr
-        
-        self.model = timm.create_model('{}'.format(args.model_name), pretrained=pretrained, features_only=True)
-        
-        if not pretrained:
-            self.init_weights()
-        
-        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
-        final_dim = original_dimensions[-1]
-        
-        if self.ret_interm_repr:
-            self.reshaping_head = nn.ModuleList([
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c'),
-                    nn.Linear(original_dim, final_dim)
-                ) 
-            for original_dim in original_dimensions])
-        else:
-            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c')
-            )
-        
-        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
-        self.configuration = Config(hidden_size=final_dim, 
-                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
-         
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
-        
-    def get_reduction_dims(self, image_size):
-        img = torch.rand(2, 3, image_size, image_size)
-        features = self.model(img)
-        dims = [layer_output.size(1) for layer_output in features]
-        return dims
-    
-    def forward(self, x):
-        if self.ret_interm_repr:
-            interm_features = self.model(x)
-            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        return self.reshaping_head(self.model(x)[-1])
-
 
 class AlexNet(nn.Module):
     def __init__(self, args, ret_interm_repr=True, pretrained=False):
@@ -229,11 +110,11 @@ class AlexNet(nn.Module):
         # train_nodes, eval_nodes = feature_extraction.get_graph_node_names()
         # features.1, features.4, features.7, features.9, features.11
         return_nodes = {
-            'features.1': 'layer1',
-            'features.4': 'layer2',
-            'features.7': 'layer3',
-            'features.9': 'layer4',
-            'features.11': 'layer5'
+            'features.1': 'layerminus5',
+            'features.4': 'layerminus4',
+            'features.7': 'layerminus3',
+            'features.9': 'layerminus2',
+            'features.11': 'layerminus1'
         }
         self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
         
@@ -243,6 +124,10 @@ class AlexNet(nn.Module):
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)
         final_dim = original_dimensions[-1]
         
+        self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c')
+                    )
+        '''
         if self.ret_interm_repr:
             self.reshaping_head = nn.ModuleList([
                 nn.Sequential(
@@ -252,10 +137,8 @@ class AlexNet(nn.Module):
                 ) 
             for original_dim in original_dimensions])
         else:
-            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c')
-            )
-        
+            self.reshaping_head = 
+        '''
         Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
         self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
@@ -277,35 +160,36 @@ class AlexNet(nn.Module):
         return dims
     
     def forward(self, x):
+        interm_features = list(self.model(x).values())
         if self.ret_interm_repr:
-            interm_features = self.model(x).values()
-            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        return self.reshaping_head(self.model(x)['layer5'])
+            return [self.pool(feats) for feats in interm_features]
+            #interm_feats = [self.reshaping_head[i](features.detach()) for i, features in enumerate(interm_features[:-1])]
+            #feats_last = [self.reshaping_head[-1](interm_features[-1])]
+            #return interm_feats + feats_last
+            #return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
+        #return self.reshaping_head(self.model(x)['layerminus1'])
+        return self.pool(interm_features[-1])
+    
 
-
-class ResNet18(nn.Module):
+class ResNet(nn.Module):
     def __init__(self, args, ret_interm_repr=True, pretrained=False):
-        super(ResNet18, self).__init__()
+        super(ResNet, self).__init__()
         
         self.ret_interm_repr = ret_interm_repr
         
-        model = models.resnet18(pretrained=pretrained, progress=True)
-        # node_names for outputs after Conv2d+ReLU
-        # train_nodes, eval_nodes = feature_extraction.get_graph_node_names()
-        return_nodes = {
-            'layer4.0.relu': 'layerminus4',
-            'layer4.0.relu_1': 'layerminus3',
-            'layer4.1.relu': 'layerminus2',
-            'layer4.1.relu_1': 'layerminus1'
-        }
+        model, return_nodes = self.select_model_nodes(model_name=args.model_name, pretrained=pretrained)
         self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
-        
+
         if not pretrained:
             self.init_weights()
         
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)
         final_dim = original_dimensions[-1]
         
+        self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1),
+                    Rearrange('b c 1 1 -> b c')
+                    )
+        '''
         if self.ret_interm_repr:
             self.reshaping_head = nn.ModuleList([
                 nn.Sequential(
@@ -318,7 +202,8 @@ class ResNet18(nn.Module):
             self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
                     Rearrange('b c 1 1 -> b c')
             )
-        
+        '''
+
         Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
         self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
@@ -340,143 +225,147 @@ class ResNet18(nn.Module):
         return dims
     
     def forward(self, x):
+        interm_features = list(self.model(x).values())
         if self.ret_interm_repr:
-            interm_features = self.model(x).values()
-            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        return self.reshaping_head(self.model(x)['layerminus1'])
-
-
-class ResNet50(nn.Module):
-    def __init__(self, args, ret_interm_repr=True, pretrained=False):
-        super(ResNet50, self).__init__()
-        
-        self.ret_interm_repr = ret_interm_repr
-        
-        model = models.resnet50(pretrained=pretrained, progress=True)
-        # node_names for outputs after Conv2d+ReLU
-        # train_nodes, eval_nodes = feature_extraction.get_graph_node_names()
-        return_nodes = {
-            'layer4.0.relu': 'layerminus9',
-            'layer4.0.relu_1': 'layerminus8',
-            'layer4.0.relu_2': 'layerminus7',
-            'layer4.1.relu': 'layerminus6',
-            'layer4.1.relu_1': 'layerminus5',
-            'layer4.1.relu_2': 'layerminus4',
-            'layer4.2.relu': 'layerminus3',
-            'layer4.2.relu_1': 'layerminus2',
-            'layer4.2.relu_2': 'layerminus1'
-        }
-        self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
-        
-        if not pretrained:
-            self.init_weights()
-        
-        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
-        final_dim = original_dimensions[-1]
-        
-        if self.ret_interm_repr:
-            self.reshaping_head = nn.ModuleList([
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c'),
-                    nn.Linear(original_dim, final_dim)
-                ) 
-            for original_dim in original_dimensions])
-        else:
-            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c')
-            )
-        
-        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
-        self.configuration = Config(hidden_size=final_dim, 
-                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
-         
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
-        
-    def get_reduction_dims(self, image_size):
-        img = torch.rand(2, 3, image_size, image_size)
-        features = self.model(img)
-        dims = [layer_output.size(1) for layer_output in features.values()]
-        return dims
+            return [self.pool(feats) for feats in interm_features]
+            #interm_feats = [self.reshaping_head[i](features.detach()) for i, features in enumerate(interm_features[:-1])]
+            #feats_last = [self.reshaping_head[-1](interm_features[-1])]
+            #return interm_feats + feats_last
+            #return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
+        #return self.reshaping_head(self.model(x)['layerminus1'])
+        return self.pool(interm_features[-1])
     
-    def forward(self, x):
-        if self.ret_interm_repr:
-            interm_features = self.model(x).values()
-            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        return self.reshaping_head(self.model(x)['layerminus1'])
-
-
-class CIFARResNet18(nn.Module):
-    def __init__(self, args, ret_interm_repr=True, pretrained=False):
-        super(CIFARResNet18, self).__init__()
-        
-        self.ret_interm_repr = ret_interm_repr
-        
-        model = cifar_resnet18(pretrained=pretrained, progress=True)
+    def select_model_nodes(self, model_name, pretrained):
         # node_names for outputs after Conv2d+ReLU
-        # train_nodes, eval_nodes = feature_extraction.get_graph_node_names()
-        return_nodes = {
-            'layer4.0.relu': 'layerminus4',
-            'layer4.0.relu_1': 'layerminus3',
-            'layer4.1.relu': 'layerminus2',
-            'layer4.1.relu_1': 'layerminus1'
-        }
-        self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
-        
-        if not pretrained:
-            self.init_weights()
-        
-        original_dimensions = self.get_reduction_dims(image_size=args.image_size)
-        final_dim = original_dimensions[-1]
-        
-        if self.ret_interm_repr:
-            self.reshaping_head = nn.ModuleList([
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c'),
-                    nn.Linear(original_dim, final_dim)
-                ) 
-            for original_dim in original_dimensions])
+        # train_nodes, eval_nodes = feature_extraction.get_graph_node_names(model)
+        if model_name == 'cifar_resnet18':
+            cifar_resnet18(pretrained=pretrained, progress=True)
+            return_nodes = {
+                'layer3.0.relu': 'layerminus8',
+                'layer3.0.relu_1': 'layerminus7',
+                'layer3.1.relu': 'layerminus6',
+                'layer3.1.relu_1': 'layerminus5',
+                'layer4.0.relu': 'layerminus4',
+                'layer4.0.relu_1': 'layerminus3',
+                'layer4.1.relu': 'layerminus2',
+                'layer4.1.relu_1': 'layerminus1'
+            }
+        elif model_name == 'resnet18':
+            model = models.resnet18(pretrained=pretrained, progress=True)
+            return_nodes = {
+                'layer3.0.relu': 'layerminus8',
+                'layer3.0.relu_1': 'layerminus7',
+                'layer3.1.relu': 'layerminus6',
+                'layer3.1.relu_1': 'layerminus5',
+                'layer4.0.relu': 'layerminus4',
+                'layer4.0.relu_1': 'layerminus3',
+                'layer4.1.relu': 'layerminus2',
+                'layer4.1.relu_1': 'layerminus1'
+            }
+        elif model_name == 'resnet50':
+            model = models.resnet50(pretrained=pretrained, progress=True)
+            return_nodes = {
+                'layer4.0.relu': 'layerminus9',
+                'layer4.0.relu_1': 'layerminus8',
+                'layer4.0.relu_2': 'layerminus7',
+                'layer4.1.relu': 'layerminus6',
+                'layer4.1.relu_1': 'layerminus5',
+                'layer4.1.relu_2': 'layerminus4',
+                'layer4.2.relu': 'layerminus3',
+                'layer4.2.relu_1': 'layerminus2',
+                'layer4.2.relu_2': 'layerminus1'
+            }
+        elif model_name == 'resnet20':
+            model = resnet20()
+            return_nodes = {
+                'layer3.0.relu': 'layerminus6',
+                'layer3.0.relu_7': 'layerminus5',
+                'layer3.1.relu': 'layerminus4',
+                'layer3.1.relu_8': 'layerminus3',
+                'layer3.2.relu': 'layerminus2',
+                'layer3.2.relu_9': 'layerminus1'
+            }
+        elif model_name == 'resnet32':
+            model = resnet32()
+            return_nodes =  {
+                'layer3.0.relu': 'layerminus10',
+                'layer3.0.relu_11': 'layerminus9',
+                'layer3.1.relu': 'layerminus8',
+                'layer3.1.relu_12': 'layerminus7',
+                'layer3.2.relu': 'layerminus6',
+                'layer3.2.relu_13': 'layerminus5',
+                'layer3.3.relu': 'layerminus4',
+                'layer3.3.relu_14': 'layerminus3',
+                'layer3.4.relu': 'layerminus2',
+                'layer3.4.relu_15': 'layerminus1'
+            }
+        elif model_name == 'resnet56':
+            model = resnet56()
+            return_nodes =  {
+                'layer3.0.relu': 'layerminus18',
+                'layer3.0.relu_19': 'layerminus17',
+                'layer3.1.relu': 'layerminus16',
+                'layer3.1.relu_20': 'layerminus15',
+                'layer3.2.relu': 'layerminus14',
+                'layer3.2.relu_21': 'layerminus13',
+                'layer3.3.relu': 'layerminus12',
+                'layer3.3.relu_22': 'layerminus11',
+                'layer3.4.relu': 'layerminus10',
+                'layer3.4.relu_23': 'layerminus9',
+                'layer3.5.relu': 'layerminus8',
+                'layer3.5.relu_24': 'layerminus7',
+                'layer3.6.relu': 'layerminus6',
+                'layer3.6.relu_25': 'layerminus5',
+                'layer3.7.relu': 'layerminus4',
+                'layer3.7.relu_26': 'layerminus3',
+                'layer3.8.relu': 'layerminus2',
+                'layer3.8.relu_27': 'layerminus1'
+            }
+        elif model_name == 'resnet110':
+            model = resnet110()
+            return_nodes =  {
+                'layer3.9.relu': 'layerminus18',
+                'layer3.9.relu_46': 'layerminus17',
+                'layer3.10.relu': 'layerminus16',
+                'layer3.10.relu_47': 'layerminus15',
+                'layer3.11.relu': 'layerminus14',
+                'layer3.11.relu_48': 'layerminus13',
+                'layer3.12.relu': 'layerminus12',
+                'layer3.12.relu_49': 'layerminus11',
+                'layer3.13.relu': 'layerminus10',
+                'layer3.13.relu_50': 'layerminus9',
+                'layer3.14.relu': 'layerminus8',
+                'layer3.14.relu_51': 'layerminus7',
+                'layer3.15.relu': 'layerminus6',
+                'layer3.15.relu_52': 'layerminus5',
+                'layer3.16.relu': 'layerminus4',
+                'layer3.16.relu_53': 'layerminus3',
+                'layer3.17.relu': 'layerminus2',
+                'layer3.17.relu_54': 'layerminus1'
+            }
+        elif model_name == 'resnet8x4':
+            model = resnet8x4()
+            return_nodes = {
+                'layer2.0.relu': 'layerminus4',
+                'layer2.0.relu_2': 'layerminus3',
+                'layer3.0.relu': 'layerminus2',
+                'layer3.0.relu_3': 'layerminus1'
+            }
+        elif model_name == 'resnet32x4':
+            model = resnet32x4()
+            return_nodes =  {
+                'layer3.0.relu': 'layerminus10',
+                'layer3.0.relu_11': 'layerminus9',
+                'layer3.1.relu': 'layerminus8',
+                'layer3.1.relu_12': 'layerminus7',
+                'layer3.2.relu': 'layerminus6',
+                'layer3.2.relu_13': 'layerminus5',
+                'layer3.3.relu': 'layerminus4',
+                'layer3.3.relu_14': 'layerminus3',
+                'layer3.4.relu': 'layerminus2',
+                'layer3.4.relu_15': 'layerminus1'
+            }
         else:
-            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c')
-            )
+            raise NotImplementedError
         
-        Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
-        self.configuration = Config(hidden_size=final_dim, 
-                                num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
-         
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
-        
-    def get_reduction_dims(self, image_size):
-        img = torch.rand(2, 3, image_size, image_size)
-        features = self.model(img)
-        dims = [layer_output.size(1) for layer_output in features.values()]
-        return dims
-    
-    def forward(self, x):
-        if self.ret_interm_repr:
-            interm_features = self.model(x).values()
-            return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        return self.reshaping_head(self.model(x)['layerminus1'])
-
-
-
-
-
+        return model, return_nodes

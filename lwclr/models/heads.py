@@ -1,8 +1,48 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops.layers.torch import Rearrange
+
 from .custom_losses import NT_XentSimCLR, SupConLoss
 # https://github.com/PatrickHua/SimSiam/blob/main/models/simsiam.py
+
+class MultiScaleToSingleScaleHead(nn.Module):
+    def __init__(self, args, model, distill=False, detach=True):
+        super().__init__()
+        
+        self.detach = detach
+        
+        if distill:
+            model_name = args.model_name_teacher
+        else:
+            model_name = args.model_name
+        
+        original_dimensions = self.get_reduction_dims(model, args.image_size)
+        final_dim = original_dimensions[-1]
+        
+        if model_name in ['alexnet', 'resnet18', 'resnet50', 'cifar_resnet18', 
+            'resnet20', 'resnet56', 'resnet110', 'resnet8x4', 'resnet32x4']:            
+            self.rescaling_head = nn.ModuleList([
+                ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=1, in_features=original_dim, out_features=final_dim)
+                #nn.Linear(original_dim, final_dim)     
+                for original_dim in original_dimensions])
+        else:
+            self.rescaling_head = nn.ModuleList([
+                nn.Identity() for _ in original_dimensions])
+            
+    def get_reduction_dims(self, model, image_size):
+        img = torch.rand(2, 3, image_size, image_size)
+        features = model(img)
+        dims = [layer_output.size(1) for layer_output in features]
+        return dims
+    
+    def forward(self, x):
+        if self.detach:
+            interm_feats = [self.rescaling_head[i](features.detach()) for i, features in enumerate(x)]
+        else:
+            interm_feats = [self.rescaling_head[i](features) for i, features in enumerate(x)]
+        return interm_feats
+
 
 class ProjectionMLPHead(nn.Module):
     def __init__(self, linear: bool = False, batch_norm: bool = False, 
