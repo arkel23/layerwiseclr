@@ -1,5 +1,5 @@
 import math
-
+import numpy as np
 from torch.optim.lr_scheduler import LambdaLR
 from timm.optim import create_optimizer_v2
 
@@ -20,15 +20,21 @@ class ConstantEpochDecayLRSchedule(LambdaLR):
         super(ConstantEpochDecayLRSchedule, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
 
     def lr_lambda(self, step):
-        if step < self.decay_steps[0]:
+        stages = np.sum(step > np.asarray(self.decay_steps))
+        if stages > 0:
+            return 0.1 ** stages
+        else:
+            return 1
+        '''if step < self.decay_steps[0]:
             return 1
         elif step > self.decay_steps[0] and step < self.decay_steps[1]:
-            return 0.1
+            return 1.0 * 0.1
         elif step > self.decay_steps[1] and step < self.decay_steps[2]:
             return 0.01
         else:
             return 0.001 
-
+        '''
+        
 class WarmupConstantSchedule(LambdaLR):
     """ Linear warmup and then constant.
         Linearly increases learning rate schedule from 0 to 1 over `warmup_steps` training steps.
