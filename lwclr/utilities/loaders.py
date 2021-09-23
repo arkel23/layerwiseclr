@@ -42,7 +42,7 @@ def ret_args(ret_parser=False):
     
     parser = pl.Trainer.add_argparse_args(parser)
     parser.set_defaults(gpus=1, max_epochs=2, gradient_clip_val=1.0)
-    parser.set_defaults(precision=16, log_gpu_memory=None, profiler=None, benchmark=True)
+    parser.set_defaults(precision=32, log_gpu_memory=None, profiler=None, benchmark=True)
 
     if ret_parser:
         return parser
@@ -67,9 +67,9 @@ def ret_args(ret_parser=False):
         args.run_name = '{}_ckpt{}'.format(
             args.mode, os.path.basename(os.path.dirname(os.path.abspath(args.checkpoint_path))))
     else:
-        args.run_name = '{}_{}projlayersbn{}_{}contlayers_{}_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
-            args.mode, args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
-            args.dataset_name, args.model_name, args.image_size, args.batch_size, 
+        args.run_name = '{}_{}_{}projlbn{}_{}contl_{}_is{}_bs{}_{}lr{}wd{}_seed{}'.format(
+            args.mode, args.model_name, args.no_proj_layers, args.bn_proj, args.cont_layers_range, 
+            args.dataset_name, args.image_size, args.batch_size, 
             args.optimizer, args.learning_rate, args.weight_decay, args.seed)
 
     if args.deit_recipe:

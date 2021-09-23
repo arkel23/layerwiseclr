@@ -61,32 +61,8 @@ class LitSimCLR(pl.LightningModule):
         
         return loss
     
-    def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=("bias", "bn")):
-        params = []
-        excluded_params = []
-
-        for name, param in named_params:
-            if not param.requires_grad:
-                continue
-            elif any(layer_name in name for layer_name in skip_list):
-                excluded_params.append(param)
-            else:
-                params.append(param)
-
-        return [{"params": params, "weight_decay": weight_decay}, {"params": excluded_params, "weight_decay": 0.0}]
-
     def configure_optimizers(self):
-        #'''
-        params = self.exclude_from_wt_decay(self.named_parameters(), weight_decay=self.args.weight_decay)
-        
-        if self.args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(params, 
-            lr=self.args.learning_rate, weight_decay=self.args.weight_decay)  
-        else: 
-            optimizer = torch.optim.SGD(params, lr=self.args.learning_rate, 
-            momentum=0.9, weight_decay=self.args.weight_decay)
-        #'''
-        #optimizer = create_optim(self, self.args)
+        optimizer = create_optim(self, self.args)
         
         scheduler = {'scheduler': WarmupCosineSchedule(
         optimizer, warmup_steps=self.args.warmup_steps, 
