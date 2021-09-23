@@ -5,7 +5,8 @@ import pytorch_lightning as pl
 from .heads import ProjectionMLPHead, MultiScaleToSingleScaleHead
 from .custom_losses import SupConLoss
 from .model_selection import load_model
-from .optim_utils import WarmupCosineSchedule, create_optim
+#from .optim_utils import WarmupCosineSchedule, create_optim
+from .optim_utils import create_optim, create_scheduler
 
 class LitSimLWCLR(pl.LightningModule):
     
@@ -17,8 +18,8 @@ class LitSimLWCLR(pl.LightningModule):
 
         self.backbone = load_model(args, ret_interm_repr=True)                
         
-        stop_gradient = not self.args.no_stop_gradient
-        self.rescaler = MultiScaleToSingleScaleHead(args, model=self.backbone, detach=stop_gradient)
+        if self.args.cont_layers_range != 1:
+            self.rescaler = MultiScaleToSingleScaleHead(args, model=self.backbone, detach=self.args.stop_gradient)
         
         self.projector = ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=args.no_proj_layers,
                             in_features=self.backbone.configuration.hidden_size, 
@@ -37,12 +38,19 @@ class LitSimLWCLR(pl.LightningModule):
         z_i = self.projector(interm_feats_i[-1])
         
         interm_feats_j =  self.backbone(x_j)
-        interm_feats_j = self.rescaler(interm_feats_j)
-        interm_feats_j = interm_feats_j[-self.args.cont_layers_range:]
-        #z_j = [self.projector(feats.detach()) for feats in interm_feats_j]
-        z_j = [self.projector(feats) for feats in interm_feats_j]
-        
-        z = torch.cat([z_i.unsqueeze(1), torch.stack(z_j, dim=1)], dim=1)
+        if hasattr(self, 'rescaler'):
+            interm_feats_j = self.rescaler(interm_feats_j)
+            interm_feats_j = interm_feats_j[-self.args.cont_layers_range:]
+            z_j = [self.projector(feats) for feats in interm_feats_j]
+            #z_j = [self.projector(feats.detach()) for feats in interm_feats_j]
+            z = torch.cat([z_i.unsqueeze(1), torch.stack(z_j, dim=1)], dim=1)
+        else:
+            if self.args.stop_gradient:
+                z_j = self.projector(interm_feats_j[-1].detach())
+            else:
+                z_j = self.projector(interm_feats_j[-1])
+            z = torch.cat([z_i.unsqueeze(1), z_j.unsqueeze(1)], dim=1)
+                    
         loss = self.criterion(F.normalize(z, dim=2))
         return loss
 
@@ -51,25 +59,20 @@ class LitSimLWCLR(pl.LightningModule):
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         
         return loss
-
+    
     def validation_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
-        self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
-        
-        return loss
-
+        return 0
+    
     def test_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
-        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
-        
-        return loss
-        
+        return 0
+    
     def configure_optimizers(self):
         optimizer = create_optim(self, self.args)
         
-        scheduler = {'scheduler': WarmupCosineSchedule(
-        optimizer, warmup_steps=self.args.warmup_steps, 
-        t_total=self.args.total_steps),
-        'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
+        scheduler = create_scheduler(self.args, optimizer, self.args.total_steps)
+        #scheduler = {'scheduler': WarmupCosineSchedule(
+        #optimizer, warmup_steps=self.args.warmup_steps, 
+        #t_total=self.args.total_steps),
+        #'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
         
         return [optimizer], [scheduler]

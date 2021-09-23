@@ -9,7 +9,8 @@ from .heads import ProjectionMLPHead, MultiScaleToSingleScaleHead
 from .custom_losses import SupConLoss
 from .model_selection import load_model
 from .lit_evaluator import freeze_layers
-from .optim_utils import WarmupCosineSchedule, create_optim
+#from .optim_utils import WarmupCosineSchedule, create_optim
+from .optim_utils import create_optim, create_scheduler
         
 class LitContDistill(pl.LightningModule):
     def __init__(self, args):
@@ -21,8 +22,10 @@ class LitContDistill(pl.LightningModule):
         # teacher can be different (controlled by --model_name_teacher arg)
         self.distill = True if args.model_name_teacher else False
         self.backbone = load_model(args, ret_interm_repr=False, pretrained=False)  
-        self.backbone_teacher = load_model(args, ret_interm_repr=True, pretrained=args.pretrained_teacher, distill=self.distill)
-        
+        self.backbone_teacher = load_model(
+            args, ret_interm_repr=True, pretrained=args.pretrained_teacher, 
+            distill=self.distill, ckpt_path=args.checkpoint_path)
+         
         if self.args.freeze_teacher:
             freeze_layers(self.backbone_teacher)             
 
@@ -31,7 +34,9 @@ class LitContDistill(pl.LightningModule):
         hidden_size = self.args.projector_hidden_size
         out_features = self.args.projector_output_size
         
-        self.rescaler = MultiScaleToSingleScaleHead(args, model=self.backbone_teacher, distill=self.distill)
+        if ((self.args.mode == 'cd_single' and (self.args.random_layer_contrast or self.args.layer_contrast != -1)) or 
+        (self.args.mode == 'cd_multi' and self.args.cont_layers_range != 1)):
+            self.rescaler = MultiScaleToSingleScaleHead(args, model=self.backbone_teacher, distill=self.distill)
         
         self.projector = ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=args.no_proj_layers,
                             in_features=in_features, hidden_size=hidden_size, out_features=out_features)
@@ -86,7 +91,11 @@ class LitContDistill(pl.LightningModule):
         teacher_acc = accuracy(logits.softmax(-1), y)
 
         # loss for student network
-        interm_feats_teacher = self.rescaler(interm_feats_teacher)
+        if hasattr(self, 'rescaler'):
+            interm_feats_teacher = self.rescaler(interm_feats_teacher)
+        else:
+            interm_feats_teacher = [interm_feats_teacher[-1].detach()]
+        
         if self.args.mode == 'cd_single':
             loss = self.cd_single(interm_feats_teacher, feats_student)    
         else:
@@ -121,10 +130,11 @@ class LitContDistill(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = create_optim(self, self.args)
         
-        scheduler = {'scheduler': WarmupCosineSchedule(
-        optimizer, warmup_steps=self.args.warmup_steps, 
-        t_total=self.args.total_steps),
-        'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
+        scheduler = create_scheduler(self.args, optimizer, self.args.total_steps)
+        #scheduler = {'scheduler': WarmupCosineSchedule(
+        #optimizer, warmup_steps=self.args.warmup_steps, 
+        #t_total=self.args.total_steps),
+        #'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
         
         return [optimizer], [scheduler]
     

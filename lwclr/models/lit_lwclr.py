@@ -5,7 +5,8 @@ import pytorch_lightning as pl
 from .heads import ProjectionMLPHead, MultiScaleToSingleScaleHead
 from .custom_losses import SupConLoss
 from .model_selection import load_model
-from .optim_utils import WarmupCosineSchedule, create_optim
+#from .optim_utils import WarmupCosineSchedule, create_optim
+from .optim_utils import create_optim, create_scheduler
 
 class LitLWCLR(pl.LightningModule):
     
@@ -63,9 +64,10 @@ class LitLWCLR(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = create_optim(self, self.args)
         
-        scheduler = {'scheduler': WarmupCosineSchedule(
-        optimizer, warmup_steps=self.args.warmup_steps, 
-        t_total=self.args.total_steps),
-        'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
+        scheduler = create_scheduler(self.args, optimizer, self.args.total_steps)
+        #scheduler = {'scheduler': WarmupCosineSchedule(
+        #optimizer, warmup_steps=self.args.warmup_steps, 
+        #t_total=self.args.total_steps),
+        #'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
         
         return [optimizer], [scheduler]

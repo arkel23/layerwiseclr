@@ -99,15 +99,19 @@ def ret_args(ret_parser=False):
 def load_trainer(args, model, wandb_logger):
     # https://lightning-bolts.readthedocs.io/en/latest/self_supervised_callbacks.html
     # https://github.com/PyTorchLightning/lightning-bolts/blob/47eb2aae677350159c9ec0dc8ccdb6eef4217fff/pl_bolts/callbacks/ssl_online.py#L66
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=os.path.join(args.results_dir, args.run_name), 
-        filename='{epoch}', monitor='val_loss', save_on_train_epoch_end=False, 
-        verbose=True, save_top_k=-1, save_last=True, save_weights_only=True,
-        mode='min', every_n_epochs=args.save_checkpoint_freq)
-
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     if args.mode not in ['linear_eval', 'fine_tuning', 'cd_full_single', 'cd_full_multi']:
+        monitor_metric = 'online_val_acc'
+    else:
+        monitor_metric = 'val_acc'
+        
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=os.path.join(args.results_dir, args.run_name), 
+        filename='{epoch}', monitor=monitor_metric, save_on_train_epoch_end=False, 
+        verbose=True, save_top_k=1, save_weights_only=True, mode='max')    
+
+    if args.mode not in ['linear_eval', 'fine_tuning', 'cd_full_single', 'cd_full_multi']:    
         if args.knn_online:
             online_eval_callback = models.KNNOnlineEvaluator(
                 mode=args.mode, num_classes=args.num_classes)
@@ -176,7 +180,7 @@ def environment_loader(args, init=True):
         os.makedirs(args.results_dir, exist_ok=True)
         wandb.init(config=args)
         wandb.run.name = args.run_name
-        wandb_logger = WandbLogger(name=args.run_name)
+    wandb_logger = WandbLogger(name=args.run_name)
         
     # seed everything
     pl.seed_everything(seed=args.seed)

@@ -12,80 +12,6 @@ from pytorch_lightning import LightningDataModule
 from timm.data import create_transform
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-def standard_transform(split, args):
-    if split == 'train':
-        transform = transforms.Compose([
-            transforms.Resize(args.image_size+32),
-            transforms.RandomCrop((args.image_size, args.image_size)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.1, 
-                contrast=0.1, saturation=0.1, hue=0.1),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                std=[0.229, 0.224, 0.225])
-        ])
-    else:
-        transform = transforms.Compose([
-            transforms.Resize((args.image_size, args.image_size)), 
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                std=[0.229, 0.224, 0.225])
-        ])
-
-    return transform
-
-
-def deit_transform(split, args):
-    resize_im = args.image_size > 32
-    if split == 'train':
-        # this should always dispatch to transforms_imagenet_train
-        transform = create_transform(
-            input_size=args.image_size,
-            is_training=True,
-            color_jitter=args.color_jitter,
-            auto_augment=args.aa,
-            interpolation=args.train_interpolation,
-            re_prob=args.reprob,
-            re_mode=args.remode,
-            re_count=args.recount,
-        )
-        if not resize_im:
-            # replace RandomResizedCropAndInterpolation with
-            # RandomCrop
-            transform.transforms[0] = transforms.RandomCrop(
-                args.image_size, padding=4)
-        return transform
-
-    t = []
-    if resize_im:
-        size = int((256 / 224) * args.image_size) # to maintain same ratio w.r.t. 224 images
-        t.append(transforms.Resize(size, interpolation=3))
-        t.append(transforms.CenterCrop(args.image_size))
-
-    t.append(transforms.ToTensor())
-    t.append(transforms.Normalize(mean=[0.5, 0.5, 0.5],
-									std=[0.5, 0.5, 0.5]))
-    return transforms.Compose(t)
-
-
-def simclr_transform(args):
-    s = 1
-    color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-    transform = transforms.Compose([
-            transforms.RandomResizedCrop(size=args.image_size),
-            transforms.RandomHorizontalFlip(),  # with 0.5 probability
-            transforms.RandomApply([color_jitter], p=0.8),
-            transforms.RandomGrayscale(p=0.2),
-            transforms.RandomApply([transforms.GaussianBlur(kernel_size=args.image_size//20*2+1, sigma=(0.1, 2.0))], p=0.5),
-            # We blur the image 50% of the time using a Gaussian kernel. We randomly sample σ ∈ [0.1, 2.0], and the kernel size is set to be 10% of the image height/width.
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                std=[0.229, 0.224, 0.225])
-        ])
-        
-    return transform
-
                 
 class ApplyTransform:
     """
@@ -102,8 +28,20 @@ class ApplyTransform:
         else:
             self.mode = 'default'
 
+        if self.args.dataset_name == 'imagenet':
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+        elif self.args.dataset_name in ['cifar10', 'cifar100']:
+            mean = [0.5071, 0.4867, 0.4408]
+            std = [0.2675, 0.2565, 0.2761]
+        else:
+            mean = [0.5, 0.5, 0.5]
+            std = [0.5, 0.5, 0.5]
+        self.mean = mean
+        self.std = std
+
         self.transform = self.build_transform()
-    
+            
     def __call__(self, x):
         if self.mode == 'simclr_train':
             return self.transform(x), self.transform(x)
@@ -112,13 +50,85 @@ class ApplyTransform:
 
     def build_transform(self):
         if self.args.deit_recipe:
-            transform = deit_transform(split=self.split, args=self.args)
+            transform = self.deit_transform(split=self.split, args=self.args)
         elif self.mode == 'simclr_train':
-            transform = simclr_transform(args=self.args)
+            transform = self.simclr_transform(args=self.args)
         else:
-            transform = standard_transform(split=self.split, args=self.args)
+            transform = self.standard_transform(split=self.split, args=self.args)
         return transform
 
+    def standard_transform(self, split, args):
+        if split == 'train':
+            transform = transforms.Compose([
+                transforms.Resize(args.image_size+32),
+                transforms.RandomCrop((args.image_size, args.image_size)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ColorJitter(brightness=0.1, 
+                    contrast=0.1, saturation=0.1, hue=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=self.mean,
+                                    std=self.std)
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize((args.image_size, args.image_size)), 
+                transforms.ToTensor(),
+                transforms.Normalize(mean=self.mean,
+                                    std=self.std)
+            ])
+
+        return transform
+
+
+    def deit_transform(self, split, args):
+        resize_im = args.image_size > 32
+        if split == 'train':
+            # this should always dispatch to transforms_imagenet_train
+            transform = create_transform(
+                input_size=args.image_size,
+                is_training=True,
+                color_jitter=args.color_jitter,
+                auto_augment=args.aa,
+                interpolation=args.train_interpolation,
+                re_prob=args.reprob,
+                re_mode=args.remode,
+                re_count=args.recount,
+            )
+            if not resize_im:
+                # replace RandomResizedCropAndInterpolation with
+                # RandomCrop
+                transform.transforms[0] = transforms.RandomCrop(
+                    args.image_size, padding=4)
+            return transform
+
+        t = []
+        if resize_im:
+            size = int((256 / 224) * args.image_size) # to maintain same ratio w.r.t. 224 images
+            t.append(transforms.Resize(size, interpolation=3))
+            t.append(transforms.CenterCrop(args.image_size))
+
+        t.append(transforms.ToTensor())
+        t.append(transforms.Normalize(mean=self.mean,
+                                        std=self.std))
+        return transforms.Compose(t)
+
+
+    def simclr_transform(self, args):
+        s = 1
+        color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
+        transform = transforms.Compose([
+                transforms.RandomResizedCrop(size=args.image_size),
+                transforms.RandomHorizontalFlip(),  # with 0.5 probability
+                transforms.RandomApply([color_jitter], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=args.image_size//20*2+1, sigma=(0.1, 2.0))], p=0.5),
+                # We blur the image 50% of the time using a Gaussian kernel. We randomly sample σ ∈ [0.1, 2.0], and the kernel size is set to be 10% of the image height/width.
+                transforms.ToTensor(),
+                transforms.Normalize(mean=self.mean,
+                                    std=self.std)
+            ])
+            
+        return transform
 
 class CIFAR10DM(LightningDataModule):
 
@@ -145,6 +155,7 @@ class CIFAR10DM(LightningDataModule):
     def setup(self, stage=None):
         '''called on each GPU separately - stage defines if we are at fit or test step'''
         # we set up only relevant datasets when stage is specified (automatically set by Pytorch-Lightning)
+        '''
         if stage == 'fit' or stage is None:
             dataset_train = CIFAR10(self.data_dir, train=True, transform=self.transform_train)
     
@@ -153,7 +164,11 @@ class CIFAR10DM(LightningDataModule):
 
             self.dataset_train, self.dataset_val = random_split(dataset_train, [no_train, no_val])
             self.num_classes = len(dataset_train.classes)
-            
+        '''
+        if stage == 'fit' or stage is None:
+            self.dataset_train = CIFAR10(self.data_dir, train=True, transform=self.transform_train)
+            self.dataset_val = CIFAR10(self.data_dir, train=False, transform=self.transform_eval)
+            self.num_classes = len(self.dataset_train.classes)
         if stage == 'test' or stage is None:
             self.dataset_test = CIFAR10(self.data_dir, train=False, transform=self.transform_eval)
             self.num_classes = len(self.dataset_test.classes)
@@ -196,6 +211,7 @@ class CIFAR100DM(LightningDataModule):
     def setup(self, stage=None):
         '''called on each GPU separately - stage defines if we are at fit or test step'''
         # we set up only relevant datasets when stage is specified (automatically set by Pytorch-Lightning)
+        '''
         if stage == 'fit' or stage is None:
             dataset_train = CIFAR100(self.data_dir, train=True, transform=self.transform_train)
     
@@ -204,7 +220,11 @@ class CIFAR100DM(LightningDataModule):
 
             self.dataset_train, self.dataset_val = random_split(dataset_train, [no_train, no_val])
             self.num_classes = len(dataset_train.classes)
-            
+        '''
+        if stage == 'fit' or stage is None:
+            self.dataset_train = CIFAR100(self.data_dir, train=True, transform=self.transform_train)
+            self.dataset_val = CIFAR100(self.data_dir, train=False, transform=self.transform_eval)
+            self.num_classes = len(self.dataset_train.classes)
         if stage == 'test' or stage is None:
             self.dataset_test = CIFAR100(self.data_dir, train=False, transform=self.transform_eval)
             self.num_classes = len(self.dataset_test.classes)
@@ -246,6 +266,7 @@ class ImageNetDM(LightningDataModule):
             no_val = len(dataset_train) - no_train
             
             self.dataset_train, self.dataset_val = random_split(dataset_train, [no_train, no_val])
+            self.dataset_val.dataset.transform = self.transform_eval
             self.num_classes = len(dataset_train.classes)
         
         if stage == 'test' or stage is None:

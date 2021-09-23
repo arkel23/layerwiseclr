@@ -10,6 +10,49 @@ from pytorch_pretrained_vit import ViT, ViTConfigExtended, PRETRAINED_CONFIGS
 from .resnet_cifar import cifar_resnet18
 from .resnet_others import resnet20, resnet32, resnet56, resnet110, resnet8x4, resnet32x4
 
+def load_state_dict(args, model, ckpt_path):
+    if args.load_partial_mode:
+        model.model.load_partial(weights_path=ckpt_path, 
+            pretrained_image_size=model.configuration.pretrained_image_size, 
+            pretrained_mode=args.load_partial_mode, verbose=True)
+    else:
+        state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'))
+            
+        state_dict_cp = state_dict['state_dict'].copy()
+        for key in state_dict['state_dict'].keys():
+            if 'backbone' in key:
+                state_dict_cp[key.replace('backbone.', '')] = state_dict_cp[key]
+                del state_dict_cp[key]
+        state_dict = state_dict_cp
+            
+        expected_missing_keys = []
+                    
+        '''
+            load_patch_embedding = (
+                (model.configuration.num_channels==model.configuration.pretrained_num_channels) and
+                (not(args.conv_patching))
+            )
+            
+            if ('patch_embedding.weight' in state_dict and load_patch_embedding):
+                expected_missing_keys += ['model.patch_embedding.weight', 'model.patch_embedding.bias']
+            
+            if ('pre_logits.weight' in state_dict and model.configuration.load_repr_layer==False):
+                expected_missing_keys += ['model.pre_logits.weight', 'model.pre_logits.bias']
+                    
+            if ('model.fc.weight' in state_dict and model.config.load_fc_layer):
+                expected_missing_keys += ['model.fc.weight', 'model.fc.bias']
+        '''
+            
+        for key in expected_missing_keys:
+            state_dict.pop(key)
+                        
+        ret = model.load_state_dict(state_dict, strict=False)
+        print('''Missing keys when loading pretrained weights: {}
+                Expected missing keys: {}'''.format(ret.missing_keys, expected_missing_keys))
+        print('Unexpected keys when loading pretrained weights: {}'.format(ret.unexpected_keys))
+            
+        print('Loaded from custom checkpoint.')
+
 def load_model(args, ret_interm_repr=True, pretrained=False, distill=False, ckpt_path=False):
     # initiates model and loss
     if distill and args.model_name_teacher:
@@ -25,49 +68,7 @@ def load_model(args, ret_interm_repr=True, pretrained=False, distill=False, ckpt
         model = VisionTransformer(args, ret_interm_repr=ret_interm_repr, pretrained=pretrained)
     
     if ckpt_path:
-        if args.load_partial_mode:
-            model.model.load_partial(weights_path=ckpt_path, 
-                pretrained_image_size=model.configuration.pretrained_image_size, 
-                pretrained_mode=args.load_partial_mode, verbose=True)
-        else:
-            state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'))
-            
-            state_dict_cp = state_dict['state_dict'].copy()
-            for key in state_dict['state_dict'].keys():
-                if 'backbone' in key:
-                    state_dict_cp[key.replace('backbone.', '')] = state_dict_cp[key]
-                    del state_dict_cp[key]
-            state_dict = state_dict_cp
-            
-            expected_missing_keys = []
-            
-            
-            '''
-            load_patch_embedding = (
-                (model.configuration.num_channels==model.configuration.pretrained_num_channels) and
-                (not(args.conv_patching))
-            )
-            
-            if ('patch_embedding.weight' in state_dict and load_patch_embedding):
-                expected_missing_keys += ['model.patch_embedding.weight', 'model.patch_embedding.bias']
-            
-            if ('pre_logits.weight' in state_dict and model.configuration.load_repr_layer==False):
-                expected_missing_keys += ['model.pre_logits.weight', 'model.pre_logits.bias']
-                    
-            if ('model.fc.weight' in state_dict and model.config.load_fc_layer):
-                expected_missing_keys += ['model.fc.weight', 'model.fc.bias']
-            '''
-            
-            for key in expected_missing_keys:
-                state_dict.pop(key)
-                        
-            ret = model.load_state_dict(state_dict, strict=False)
-            print('''Missing keys when loading pretrained weights: {}
-                Expected missing keys: {}'''.format(ret.missing_keys, expected_missing_keys))
-            print('Unexpected keys when loading pretrained weights: {}'.format(ret.unexpected_keys))
-            
-            print('Loaded from custom checkpoint.')
-
+        load_state_dict(args, model, ckpt_path)
     return model
 
 
@@ -126,40 +127,16 @@ class AlexNet(nn.Module):
         }
         self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
         
-        if not pretrained:
-            self.init_weights()
-        
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)
         final_dim = original_dimensions[-1]
         
         self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1),
                     Rearrange('b c 1 1 -> b c')
                     )
-        '''
-        if self.ret_interm_repr:
-            self.reshaping_head = nn.ModuleList([
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c'),
-                    nn.Linear(original_dim, final_dim)
-                ) 
-            for original_dim in original_dimensions])
-        else:
-            self.reshaping_head = 
-        '''
+        
         Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
         self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
-         
-    @torch.no_grad()
-    def init_weights(self):
-        def _init(m):
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
-                    nn.init.normal_(m.bias, std=1e-6)
-            
-        self.apply(_init)
         
     def get_reduction_dims(self, image_size):
         img = torch.rand(2, 3, image_size, image_size)
@@ -171,11 +148,6 @@ class AlexNet(nn.Module):
         interm_features = list(self.model(x).values())
         if self.ret_interm_repr:
             return [self.pool(feats) for feats in interm_features]
-            #interm_feats = [self.reshaping_head[i](features.detach()) for i, features in enumerate(interm_features[:-1])]
-            #feats_last = [self.reshaping_head[-1](interm_features[-1])]
-            #return interm_feats + feats_last
-            #return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        #return self.reshaping_head(self.model(x)['layerminus1'])
         return self.pool(interm_features[-1])
     
 
@@ -188,44 +160,17 @@ class ResNet(nn.Module):
         model, return_nodes = self.select_model_nodes(model_name=args.model_name, pretrained=pretrained)
         self.model = feature_extraction.create_feature_extractor(model, return_nodes=return_nodes)
 
-        #if not pretrained:
-        #    self.init_weights()
-        
         original_dimensions = self.get_reduction_dims(image_size=args.image_size)
         final_dim = original_dimensions[-1]
         
         self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1),
                     Rearrange('b c 1 1 -> b c')
                     )
-        '''
-        if self.ret_interm_repr:
-            self.reshaping_head = nn.ModuleList([
-                nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c'),
-                    nn.Linear(original_dim, final_dim)
-                ) 
-            for original_dim in original_dimensions])
-        else:
-            self.reshaping_head = nn.Sequential(nn.AdaptiveAvgPool2d(1),
-                    Rearrange('b c 1 1 -> b c')
-            )
-        '''
-
+        
         Config = namedtuple('Config', ['hidden_size', 'num_classes', 'num_hidden_layers'])
         self.configuration = Config(hidden_size=final_dim, 
                                 num_classes=args.num_classes, num_hidden_layers=len(original_dimensions))
-         
-    #@torch.no_grad()
-    #def init_weights(self):
-    #    def _init(m):
-    #        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-    #            nn.init.xavier_uniform_(m.weight)
-    #            if hasattr(m, 'bias') and m.bias is not None:
-    #                nn.init.normal_(m.bias, std=1e-6)
-    #        
-    #    self.apply(_init)
-        
+             
     def get_reduction_dims(self, image_size):
         img = torch.rand(2, 3, image_size, image_size)
         features = self.model(img)
@@ -236,11 +181,6 @@ class ResNet(nn.Module):
         interm_features = list(self.model(x).values())
         if self.ret_interm_repr:
             return [self.pool(feats) for feats in interm_features]
-            #interm_feats = [self.reshaping_head[i](features.detach()) for i, features in enumerate(interm_features[:-1])]
-            #feats_last = [self.reshaping_head[-1](interm_features[-1])]
-            #return interm_feats + feats_last
-            #return [self.reshaping_head[i](features) for i, features in enumerate(interm_features)]
-        #return self.reshaping_head(self.model(x)['layerminus1'])
         return self.pool(interm_features[-1])
     
     def select_model_nodes(self, model_name, pretrained):

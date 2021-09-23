@@ -9,7 +9,8 @@ import pytorch_lightning as pl
 from .heads import ProjectionMLPHead
 from .model_selection import load_model
 from .custom_losses import NT_XentSimCLR, SupConLoss
-from .optim_utils import WarmupCosineSchedule, create_optim
+#from .optim_utils import WarmupCosineSchedule, create_optim
+from .optim_utils import create_optim, create_scheduler
 
 class LitSimCLR(pl.LightningModule):
     def __init__(self, args):
@@ -48,26 +49,21 @@ class LitSimCLR(pl.LightningModule):
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         
         return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
-        self.log('val_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
-        
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
-        self.log('test_loss', loss, on_epoch=True, on_step=False, sync_dist=True)
-        
-        return loss
     
+    def validation_step(self, batch, batch_idx):
+        return 0
+    
+    def test_step(self, batch, batch_idx):
+        return 0
+
     def configure_optimizers(self):
         optimizer = create_optim(self, self.args)
         
-        scheduler = {'scheduler': WarmupCosineSchedule(
-        optimizer, warmup_steps=self.args.warmup_steps, 
-        t_total=self.args.total_steps),
-        'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
+        scheduler = create_scheduler(self.args, optimizer, self.args.total_steps)
+        #scheduler = {'scheduler': WarmupCosineSchedule(
+        #optimizer, warmup_steps=self.args.warmup_steps, 
+        #t_total=self.args.total_steps),
+        #'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
         
         return [optimizer], [scheduler]
     
@@ -82,6 +78,8 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--learning_rate', default=3e-4, type=float,
                         help='Initial learning rate.')  
         parser.add_argument('--weight_decay', type=float, default=0.0)
+        parser.add_argument('--lr_scheduler', choices=['constant', 'constant_decay', 'warmup_constant', 'warmup_cosine'], 
+                            default='warmup_cosine')
         parser.add_argument('--warmup_steps', type=int, default=1000, help='Warmup steps for LR scheduler.')
         parser.add_argument('--warmup_epochs', type=int, default=0,
                         help='If doing warmup in terms of epochs instead of steps.')
@@ -107,8 +105,8 @@ class LitSimCLR(pl.LightningModule):
                         help='Choose which last N layers to contrast from (def last 2 layers).')
         parser.add_argument('--freeze_teacher', action='store_true',
                             help='If use this flag then freeze teacher network')
-        parser.add_argument('--no_stop_gradient', action='store_true',
-                            help='If use this flag then no stop gradient (on SimLWCLR)')
+        parser.add_argument('--stop_gradient', action='store_true',
+                            help='If use this flag then uses stop gradient (on SimLWCLR)')
         
         parser.add_argument('--bn_proj', action='store_true',
                             help='If use this flag then uses projector MLP with BN instead of LN')
@@ -118,6 +116,13 @@ class LitSimCLR(pl.LightningModule):
                         help='Number of units in hidden layer of MLP projector')
         parser.add_argument('--projector_output_size', type=int, default=2048,
                         help='Number of units in output layer of MLP projector')
+
+        parser.add_argument('--bn_proj_rescaler', action='store_true',
+                            help='If use this flag then uses rescaler MLP with BN instead of LN')
+        parser.add_argument('--no_rescaler_layers', type=int, choices=[1, 2, 3], default=1,
+                            help='Number of layers for intermediate features scaling head.')
+        parser.add_argument('--rescaler_hidden_size', type=int, default=512,
+                        help='Number of units in hidden layer of MLP projector')
 
         parser.add_argument('--fs_weight', type=float, default=1, 
                         help='Weight for fully supervised loss')

@@ -23,7 +23,12 @@ class MultiScaleToSingleScaleHead(nn.Module):
         if model_name in ['alexnet', 'resnet18', 'resnet50', 'cifar_resnet18', 
             'resnet20', 'resnet56', 'resnet110', 'resnet8x4', 'resnet32x4']:            
             self.rescaling_head = nn.ModuleList([
-                ProjectionMLPHead(batch_norm=args.bn_proj, no_layers=1, in_features=original_dim, out_features=final_dim)
+                ProjectionMLPHead(
+                    batch_norm=args.bn_proj_rescaler, 
+                    no_layers=args.no_rescaler_layers, 
+                    in_features=original_dim,
+                    hidden_size=args.rescaler_hidden_size, 
+                    out_features=final_dim)
                 #nn.Linear(original_dim, final_dim)     
                 for original_dim in original_dimensions])
         else:

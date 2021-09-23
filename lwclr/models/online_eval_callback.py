@@ -110,7 +110,7 @@ class SSLOnlineLinearEvaluator(Callback):  # pragma: no cover
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        x, y = self.to_device(test=False, batch=batch, device=pl_module.device)
+        x, y = self.to_device(test=True, batch=batch, device=pl_module.device)
 
         with torch.no_grad():
             representations = self.get_representations(pl_module, x)

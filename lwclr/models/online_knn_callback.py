@@ -57,7 +57,7 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
     ) -> Tuple[np.ndarray, np.ndarray]:
         all_representations = None
         ys = None
-        test = True if split == 'test' else False
+        test = True if split in ['val', 'test'] else False
         
         for batch in dataloader:
             x, y = self.to_device(test=test, batch=batch, device=pl_module.device)
@@ -82,8 +82,8 @@ class KNNOnlineEvaluator(Callback):  # pragma: no cover
         pl_module.eval()
     
         total_top1, total_num = 0.0, 0
-        test = True if split == 'test' else False
-    
+        test = True if split in ['val', 'test'] else False
+        
         with torch.no_grad():
             # loop test data to predict the label by weighted knn search
             #test_bar = tqdm(test_data_loader, desc='kNN', disable=hide_progress)

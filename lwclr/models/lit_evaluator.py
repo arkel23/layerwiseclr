@@ -7,7 +7,8 @@ from torchmetrics.functional import accuracy
 
 from .heads import ProjectionMLPHead
 from .model_selection import load_model
-from .optim_utils import WarmupCosineSchedule, create_optim
+#from .optim_utils import WarmupCosineSchedule, create_optim
+from .optim_utils import create_optim, create_scheduler
 
 def freeze_layers(model):
     for param in model.parameters():
@@ -67,10 +68,11 @@ class LitEvaluator(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = create_optim(self, self.args)
         
-        scheduler = {'scheduler': WarmupCosineSchedule(
-        optimizer, warmup_steps=self.args.warmup_steps, 
-        t_total=self.args.total_steps),
-        'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
+        scheduler = create_scheduler(self.args, optimizer, self.args.total_steps)
+        #scheduler = {'scheduler': WarmupCosineSchedule(
+        #optimizer, warmup_steps=self.args.warmup_steps, 
+        #t_total=self.args.total_steps),
+        #'name': 'learning_rate', 'interval': 'step', 'frequency': 1}
         
         return [optimizer], [scheduler]
     
