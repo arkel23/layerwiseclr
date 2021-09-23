@@ -59,23 +59,37 @@ class ApplyTransform:
 
     def standard_transform(self, split, args):
         if split == 'train':
-            transform = transforms.Compose([
-                transforms.Resize(args.image_size+32),
-                transforms.RandomCrop((args.image_size, args.image_size)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ColorJitter(brightness=0.1, 
-                    contrast=0.1, saturation=0.1, hue=0.1),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=self.mean,
-                                    std=self.std)
-            ])
+            if args.dataset_name in ['cifar10', 'cifar100'] and args.image_size == 32:
+                transform = transforms.Compose([
+                    transforms.RandomCrop(32, padding=4),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=self.mean, 
+                                         std=self.std)])
+            else:
+                transform = transforms.Compose([
+                    transforms.Resize(args.image_size+32),
+                    transforms.RandomCrop((args.image_size, args.image_size)),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ColorJitter(brightness=0.1, 
+                        contrast=0.1, saturation=0.1, hue=0.1),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=self.mean,
+                                        std=self.std)
+                ])
         else:
-            transform = transforms.Compose([
-                transforms.Resize((args.image_size, args.image_size)), 
-                transforms.ToTensor(),
-                transforms.Normalize(mean=self.mean,
-                                    std=self.std)
-            ])
+            if args.dataset_name in ['cifar10', 'cifar100'] and args.image_size == 32:
+                transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=self.mean,
+                                        std=self.std)])
+            else:
+                transform = transforms.Compose([
+                    transforms.Resize((args.image_size, args.image_size)), 
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=self.mean,
+                                        std=self.std)
+                ])
 
         return transform
 
