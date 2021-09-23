@@ -74,7 +74,7 @@ class LitSimCLR(pl.LightningModule):
         parser.add_argument('--temperature', type=float, default=0.5,
                         help='temperature parameter for ntxent loss')        
 
-        parser.add_argument('--optimizer', choices=['sgd', 'adam'], default='adam')
+        parser.add_argument('--optimizer', choices=['sgd', 'adam', 'momentum'], default='momentum')
         parser.add_argument('--learning_rate', default=3e-4, type=float,
                         help='Initial learning rate.')  
         parser.add_argument('--weight_decay', type=float, default=0.0)

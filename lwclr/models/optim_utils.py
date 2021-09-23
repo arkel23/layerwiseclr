@@ -14,7 +14,7 @@ class ConstantEpochDecayLRSchedule(LambdaLR):
         Linearly increases learning rate schedule from 0 to 1 over `warmup_steps` training steps.
         Keeps learning rate schedule equal to 1. after warmup_steps.
     """
-    def __init__(self, optimizer, steps_per_epoch, epochs=[150, 180, 120], last_epoch=-1):
+    def __init__(self, optimizer, steps_per_epoch, epochs=[150, 180, 210], last_epoch=-1):
         self.decay_epochs = epochs
         self.decay_steps = [epoch * steps_per_epoch for epoch in self.decay_epochs]
         super(ConstantEpochDecayLRSchedule, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
